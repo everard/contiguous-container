@@ -5,64 +5,29 @@
 #ifndef CONTIGUOUS_CONTAINER_H
 #define CONTIGUOUS_CONTAINER_H
 
-#include <experimental/tuple>
 #include <initializer_list>
-#include <type_traits>
-#include <algorithm>
+
 #include <stdexcept>
-
-#include <iterator>
-#include <utility>
-
 #include <cassert>
-#include <cstddef>
 #include <memory>
 
 #include "storage_traits.h"
+#include "algorithm.h"
+#include "iterator.h"
 
-namespace std::experimental
+namespace ecs
 {
-inline namespace detail
-{
-template <typename Tuple, std::size_t... I>
-constexpr auto tuple_slice(Tuple&& t, std::index_sequence<I...>)
-{
-        return std::make_tuple(std::get<I>(std::forward<Tuple>(t))...);
-}
-
-template <typename InputIterator, typename... Rest>
-constexpr auto for_each_iter(InputIterator first, InputIterator last, Rest&&... rest)
-{
-        static_assert(sizeof...(Rest) != 0);
-        auto args = std::forward_as_tuple(first, std::forward<Rest>(rest)...);
-
-        auto&& f = std::get<sizeof...(Rest)>(args);
-        auto iterators = tuple_slice(args, std::make_index_sequence<sizeof...(Rest)>{});
-
-        while(std::get<0>(iterators) != last)
-        {
-                std::experimental::apply(f, iterators);
-                std::experimental::apply([](auto&... i) { ((void)++i, ...); }, iterators);
-        }
-
-        return iterators;
-}
-
-//
-} // namespace detail
-
-//
 template <typename Storage>
 struct contiguous_container : Storage
 {
         // requirements:
         //
-        template <typename ForwardIterator>
-        using check_forward_iterator = std::enable_if_t<!std::is_integral<ForwardIterator>::value>;
+        template <typename InputIterator>
+        using check_input_iterator = std::enable_if_t<!std::is_integral<InputIterator>::value>;
 
         // types:
         //
-        using traits = storage_traits<Storage>;
+        using traits = ecs::storage_traits<Storage>;
         using value_type = typename Storage::value_type;
 
         //
@@ -87,91 +52,91 @@ struct contiguous_container : Storage
         //
         using Storage::Storage;
 
-        constexpr auto& operator=(std::initializer_list<value_type> il)
+        constexpr contiguous_container& operator=(std::initializer_list<value_type> il)
         {
                 assign(il);
                 return *this;
         }
 
         //
-        template <typename ForwardIterator, typename = check_forward_iterator<ForwardIterator>>
-        constexpr auto assign(ForwardIterator first, ForwardIterator last)
+        template <typename InputIterator, typename = check_input_iterator<InputIterator>>
+        constexpr bool assign(InputIterator first, InputIterator last)
         {
-                auto n = static_cast<size_type>(std::distance(first, last));
-                return assign(n, [&first]() -> auto& { return *first++; });
+                return assign(first, last,
+                              typename std::iterator_traits<InputIterator>::iterator_category{});
         }
 
-        constexpr auto assign(std::initializer_list<value_type> il)
+        constexpr bool assign(std::initializer_list<value_type> il)
         {
                 return assign(il.begin(), il.end());
         }
 
-        constexpr auto assign(size_type n, const_reference u)
+        constexpr bool assign(size_type n, const_reference u)
         {
-                return assign(n, [&u]() -> auto& { return u; });
+                return assign_n(n, make_identity_iterator(&u));
         }
 
         // iterators:
         //
-        constexpr auto begin() noexcept
+        constexpr iterator begin() noexcept
         {
                 return traits::begin(*this);
         }
 
-        constexpr auto begin() const noexcept
+        constexpr const_iterator begin() const noexcept
         {
                 return traits::begin(*this);
         }
 
-        constexpr auto end() noexcept
+        constexpr iterator end() noexcept
         {
                 return traits::end(*this);
         }
 
-        constexpr auto end() const noexcept
+        constexpr const_iterator end() const noexcept
         {
                 return traits::end(*this);
         }
 
         //
-        constexpr auto rbegin() noexcept
+        constexpr reverse_iterator rbegin() noexcept
         {
                 return reverse_iterator{end()};
         }
 
-        constexpr auto rbegin() const noexcept
+        constexpr const_reverse_iterator rbegin() const noexcept
         {
                 return const_reverse_iterator{end()};
         }
 
-        constexpr auto rend() noexcept
+        constexpr reverse_iterator rend() noexcept
         {
                 return reverse_iterator{begin()};
         }
 
-        constexpr auto rend() const noexcept
+        constexpr const_reverse_iterator rend() const noexcept
         {
                 return const_reverse_iterator{begin()};
         }
 
         //
-        constexpr auto cbegin() const noexcept
+        constexpr const_iterator cbegin() const noexcept
         {
                 return begin();
         }
 
-        constexpr auto cend() const noexcept
+        constexpr const_iterator cend() const noexcept
         {
                 return end();
         }
 
         //
-        constexpr auto crbegin() const noexcept
+        constexpr const_reverse_iterator crbegin() const noexcept
         {
                 return rbegin();
         }
 
-        constexpr auto crend() const noexcept
+        constexpr const_reverse_iterator crend() const noexcept
         {
                 return rend();
         }
@@ -189,82 +154,91 @@ struct contiguous_container : Storage
         }
 
         //
-        constexpr auto size() const noexcept
+        constexpr size_type size() const noexcept
         {
                 return static_cast<size_type>(traits::size(*this));
         }
 
-        constexpr auto max_size() const noexcept
+        constexpr size_type max_size() const noexcept
         {
                 return traits::max_size(*this);
         }
 
-        constexpr auto capacity() const noexcept
+        constexpr size_type capacity() const noexcept
         {
                 return traits::capacity(*this);
         }
 
+        //
+        constexpr bool reserve(size_type n)
+        {
+                if(n <= capacity())
+                        return true;
+
+                return traits::reallocate(*this, n);
+        }
+
         // element access:
         //
-        constexpr auto& operator[](size_type i) noexcept
+        constexpr reference operator[](size_type i) noexcept
         {
                 return data()[i];
         }
 
-        constexpr auto& operator[](size_type i) const noexcept
+        constexpr const_reference operator[](size_type i) const noexcept
         {
                 return data()[i];
         }
 
         //
-        constexpr auto& at(size_type i)
+        constexpr reference at(size_type i)
         {
                 if(i >= size())
-                        throw std::out_of_range("");
+                        throw std::out_of_range("contiguous_container::at");
 
                 return data()[i];
         }
 
-        constexpr auto& at(size_type i) const
+        constexpr const_reference at(size_type i) const
         {
                 if(i >= size())
-                        throw std::out_of_range("");
+                        throw std::out_of_range("contiguous_container::at");
 
                 return data()[i];
         }
 
         //
-        constexpr auto& front() noexcept
+        constexpr reference front() noexcept
         {
                 assert(!empty());
                 return *begin();
         }
 
-        constexpr auto& front() const noexcept
+        constexpr const_reference front() const noexcept
         {
                 assert(!empty());
                 return *begin();
         }
 
-        constexpr auto& back() noexcept
+        constexpr reference back() noexcept
         {
                 assert(!empty());
                 return *(--end());
         }
 
-        constexpr auto& back() const noexcept
+        constexpr const_reference back() const noexcept
         {
                 assert(!empty());
                 return *(--end());
         }
 
         //
-        constexpr auto data() noexcept
+        constexpr pointer data() noexcept
         {
                 return begin();
         }
 
-        constexpr auto data() const noexcept
+        constexpr const_pointer data() const noexcept
         {
                 return begin();
         }
@@ -272,26 +246,21 @@ struct contiguous_container : Storage
         // modifiers:
         //
         template <typename... Args>
-        constexpr auto emplace_back(Args&&... args)
+        constexpr iterator emplace_back(Args&&... args)
         {
-                if(full() && !traits::reserve(*this, capacity() + 1))
-                {
-                        if /*constexpr*/ (traits::no_exceptions::value)
-                                return end();
-                        else
-                                throw std::runtime_error("");
-                }
+                if(full() && !traits::reallocate(*this, capacity() + 1))
+                        return end();
 
-                auto position = traits::construct_at(*this, end(), std::forward<Args>(args)...);
+                auto position = traits::construct(*this, end(), std::forward<Args>(args)...);
                 return (void)++traits::size(*this), position;
         }
 
-        constexpr auto push_back(const_reference x)
+        constexpr iterator push_back(const_reference x)
         {
                 return emplace_back(x);
         }
 
-        constexpr auto push_back(value_type&& x)
+        constexpr iterator push_back(value_type&& x)
         {
                 return emplace_back(std::move(x));
         }
@@ -299,149 +268,218 @@ struct contiguous_container : Storage
         constexpr void pop_back() noexcept
         {
                 assert(!empty());
-                (void)--traits::size(*this), traits::destroy_at(*this, end());
+                (void)--traits::size(*this), traits::destroy(*this, end());
         }
 
         //
         template <typename... Args>
-        constexpr auto emplace(const_iterator position, Args&&... args)
+        constexpr iterator emplace(const_iterator position, Args&&... args)
         {
                 if(position == end())
                         return emplace_back(std::forward<Args>(args)...);
 
                 value_type x{std::forward<Args>(args)...};
-                return grow_at(cast(position), 1, [&x]() -> auto&& { return std::move(x); });
+                return insert_n(cast_iter(position), 1, std::make_move_iterator(&x));
         }
 
-        constexpr auto insert(const_iterator position, const_reference x)
+        constexpr iterator insert(const_iterator position, const_reference x)
         {
                 return emplace(position, x);
         }
 
-        constexpr auto insert(const_iterator position, value_type&& x)
+        constexpr iterator insert(const_iterator position, value_type&& x)
         {
                 return emplace(position, std::move(x));
         }
 
         //
-        template <typename ForwardIterator, typename = check_forward_iterator<ForwardIterator>>
-        constexpr auto insert(const_iterator position, ForwardIterator first, ForwardIterator last)
+        template <typename InputIterator, typename = check_input_iterator<InputIterator>>
+        constexpr iterator insert(const_iterator position, InputIterator first, InputIterator last)
         {
-                auto n = static_cast<difference_type>(std::distance(first, last));
-                return grow_at(cast(position), n, [&first]() -> auto& { return *first++; });
+                return insert(position, first, last,
+                              typename std::iterator_traits<InputIterator>::iterator_category{});
         }
 
-        constexpr auto insert(const_iterator position, std::initializer_list<value_type> il)
+        constexpr iterator insert(const_iterator position, std::initializer_list<value_type> il)
         {
                 return insert(position, il.begin(), il.end());
         }
 
-        constexpr auto insert(const_iterator position, size_type n, const_reference x)
+        constexpr iterator insert(const_iterator position, size_type n, const_reference x)
         {
-                return grow_at(cast(position), static_cast<difference_type>(n),
-                               [&x]() -> auto& { return x; });
+                return insert_n(cast_iter(position), n, make_identity_iterator(&x));
         }
 
         //
-        constexpr auto erase(const_iterator position)
+        constexpr iterator erase(const_iterator position)
         {
-                return shrink_at(cast(position));
+                return erase_n(cast_iter(position));
         }
 
-        constexpr auto erase(const_iterator first, const_iterator last)
+        constexpr iterator erase(const_iterator first, const_iterator last)
         {
-                return shrink_at(cast(first), last - first);
+                return erase_n(cast_iter(first), last - first);
         }
 
         //
         constexpr void clear() noexcept
         {
-                destroy(begin(), end());
+                destroy_range(begin(), end());
                 traits::size(*this) = 0;
         }
 
+        constexpr void swap(contiguous_container& x) noexcept(noexcept(traits::swap(x, x)))
+        {
+                traits::swap(*this, x);
+        }
+
 private:
-        template <typename Fill>
-        constexpr auto grow_at(iterator position, difference_type n, Fill fill)
+        template <typename InputIterator>
+        constexpr bool assign(InputIterator first, InputIterator last, std::input_iterator_tag)
         {
-                if(n == 0)
-                        return position;
+                auto assigned = begin(), sentinel = end();
+                for(; first != last && assigned != sentinel; (void)++first, (void)++assigned)
+                        *assigned = *first;
 
-                auto adjusted_size = static_cast<size_type>(n) + size();
-                if(adjusted_size > max_size() || adjusted_size < size())
-                        return end();
-
-                if(adjusted_size > capacity())
+                if(first == last)
                 {
-                        auto saved_index = position - begin();
-
-                        if(!traits::reserve(*this, adjusted_size))
+                        traits::size(*this) -= static_cast<size_type>(sentinel - assigned);
+                        destroy_range(assigned, sentinel);
+                }
+                else
+                {
+                        for(; first != last; ++first)
                         {
-                                if /*constexpr*/ (traits::no_exceptions::value)
-                                        return end();
-                                else
-                                        throw std::runtime_error("");
+                                auto p = emplace_back(*first);
+                                if(p == end())
+                                        return false;
                         }
-
-                        position = begin() + saved_index;
                 }
 
-                // relocate elements
-                auto m = std::min(n, end() - position);
-                auto last = end(), first_to_relocate = last - m;
-
-                for_each_iter(first_to_relocate, last, first_to_relocate + n, [&](auto i, auto j) {
-                        traits::construct_at(*this, j, std::move(*i));
-                });
-                std::move_backward(position, first_to_relocate, last);
-
-                // insert n elements at position
-                for_each_iter(std::generate_n(position, m, fill), position + n,
-                              [&](auto i) { traits::construct_at(*this, i, fill()); });
-
-                traits::size(*this) = adjusted_size;
-                return position;
+                return true;
         }
 
-        constexpr auto shrink_at(iterator position, difference_type n = 1)
+        template <typename ForwardIterator>
+        constexpr bool assign(ForwardIterator first, ForwardIterator last,
+                              std::forward_iterator_tag)
         {
-                if(n != 0)
-                {
-                        destroy(std::move(position + n, end(), position), end());
-                        traits::size(*this) -= static_cast<size_type>(n);
-                }
-
-                return position;
+                return assign_n(static_cast<size_type>(std::distance(first, last)), first);
         }
 
-        template <typename Fill>
-        constexpr auto assign(size_type n, Fill fill)
+        template <typename ForwardIterator>
+        constexpr bool assign_n(size_type n, ForwardIterator first)
         {
-                if(n > capacity() && !traits::reserve(*this, n))
-                {
-                        if /*constexpr*/ (traits::no_exceptions::value)
-                                return false;
-                        else
-                                throw std::runtime_error("");
-                }
+                if(n > capacity() && !traits::reallocate(*this, n))
+                        return false;
 
                 if(n <= size())
-                        destroy(std::generate_n(begin(), n, fill), end());
+                {
+                        destroy_range(std::copy_n(first, n, begin()), end());
+                }
                 else
-                        for_each_iter(std::generate_n(begin(), size(), fill), begin() + n,
-                                      [&](auto i) { traits::construct_at(*this, i, fill()); });
+                {
+                        auto mid = first;
+                        std::advance(mid, size());
+
+                        for_each_iter(
+                                std::copy(first, mid, begin()), begin() + n, [this, &mid](auto i) {
+                                        traits::construct(*this, i, *mid),
+                                                (void)++traits::size(*this), (void)++mid;
+                                });
+                }
 
                 traits::size(*this) = n;
                 return true;
         }
 
         //
-        constexpr void destroy(iterator first, iterator last) noexcept
+        template <typename InputIterator>
+        constexpr iterator insert(const_iterator position, InputIterator first, InputIterator last,
+                                  std::input_iterator_tag)
         {
-                for_each_iter(first, last, [&](auto i) { traits::destroy_at(*this, i); });
+                auto index = position - begin();
+
+                for(; first != last; ++first)
+                {
+                        auto p = emplace(position, *first);
+                        if(p == end())
+                                return end();
+                }
+
+                return begin() + index;
         }
 
-        constexpr auto cast(const_iterator position) noexcept
+        template <typename ForwardIterator>
+        constexpr iterator insert(const_iterator position, ForwardIterator first,
+                                  ForwardIterator last, std::forward_iterator_tag)
+        {
+                auto n = static_cast<size_type>(std::distance(first, last));
+                return insert_n(cast_iter(position), n, first);
+        }
+
+        template <typename ForwardIterator>
+        constexpr iterator insert_n(iterator position, size_type n, ForwardIterator first)
+        {
+                if(n == 0)
+                        return position;
+
+                auto adjusted_size = n + size();
+                if(adjusted_size > max_size() || adjusted_size < size())
+                        return end();
+
+                if(adjusted_size > capacity())
+                {
+                        auto index = position - begin();
+                        if(!traits::reallocate(*this, adjusted_size))
+                                return end();
+                        position = begin() + index;
+                }
+
+                // relocate elements
+                auto m = std::min(n, static_cast<size_type>(end() - position));
+                auto last = end(), first_to_relocate = last - m, first_to_construct = position + m;
+
+                if(m != n)
+                {
+                        auto mid = first;
+                        std::advance(mid, m);
+
+                        for_each_iter(first_to_construct, position + n, [this, &mid](auto i) {
+                                traits::construct(*this, i, *mid), (void)++traits::size(*this),
+                                        (void)++mid;
+                        });
+                }
+
+                for_each_iter(first_to_relocate, last, first_to_relocate + n, [this](auto i,
+                                                                                     auto j) {
+                        traits::construct(*this, j, std::move(*i)), (void)++traits::size(*this);
+                });
+
+                std::move_backward(position, first_to_relocate, last);
+                for_each_iter(position, first_to_construct, first, [](auto i, auto j) { *i = *j; });
+
+                return position;
+        }
+
+        //
+        constexpr iterator erase_n(iterator position, difference_type n = 1)
+        {
+                if(n != 0)
+                {
+                        destroy_range(std::move(position + n, end(), position), end());
+                        traits::size(*this) -= static_cast<size_type>(n);
+                }
+
+                return position;
+        }
+
+        //
+        constexpr void destroy_range(iterator first, iterator last) noexcept
+        {
+                for_each_iter(first, last, [&](auto i) { traits::destroy(*this, i); });
+        }
+
+        constexpr iterator cast_iter(const_iterator position) noexcept
         {
                 return begin() + (position - cbegin());
         }
@@ -500,6 +538,6 @@ constexpr void swap(contiguous_container<Storage>& lhs,
 }
 
 //
-} // namespace std::experimental
+} // namespace ecs
 
 #endif // CONTIGUOUS_CONTAINER_H

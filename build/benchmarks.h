@@ -2,7 +2,7 @@
 // Distributed under the Boost Software License, Version 1.0.
 //(See accompanying file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 //
-#include "../source/experimental/contiguous_container.h"
+#include "../source/ecs/contiguous_container.h"
 #include <benchmark/benchmark.h>
 
 #include <iostream>
@@ -37,18 +37,18 @@ struct uninitialized_memory_buffer
         }
 
         template <typename... Args>
-        void construct_at(T* location, Args&&... args)
+        void construct(T* location, Args&&... args)
         {
                 ::new(location) T{std::forward<Args>(args)...};
         }
 
-        void destroy_at(T* location) noexcept
+        void destroy(T* location) noexcept
         {
                 if /*constexpr*/ (!std::is_trivially_destructible<T>::value)
                         location->~T();
         }
 
-        static constexpr auto reserve(std::size_t) noexcept
+        static constexpr auto reallocate(std::size_t) noexcept
         {
                 return false;
         }
@@ -104,55 +104,51 @@ struct dynamic_uninitialized_memory_buffer
         }
 
         template <typename... Args>
-        void construct_at(T* location, Args&&... args)
+        void construct(T* location, Args&&... args)
         {
                 ::new(location) T{std::forward<Args>(args)...};
         }
 
-        void destroy_at(T* location) noexcept
+        void destroy(T* location) noexcept
         {
                 if /*constexpr*/ (!std::is_trivially_destructible<T>::value)
                         location->~T();
         }
 
-        auto reserve(std::size_t n)
+        bool reallocate(std::size_t n)
         {
-                if(n >= max_size())
-                        throw std::length_error("cc");
+                if(n > max_size())
+                        return false;
 
-                if(n <= capacity())
+                if(size_ == 0)
+                {
+                        storage_.reset(::new unsigned char[n * sizeof(T)]);
+                        capacity_ = n;
+
                         return true;
+                }
 
-                auto new_capacity = std::max(size() + size(), n);
-                new_capacity = (new_capacity < size() || new_capacity > max_size()) ? max_size()
-                                                                                    : new_capacity;
+                auto capacity = std::max(size_ + size_, n);
+                capacity = (capacity < size_ || capacity > max_size()) ? max_size() : capacity;
 
-                std::unique_ptr<unsigned char[]> new_storage{
-                        new unsigned char[new_capacity * sizeof(T)]};
-                auto new_data = reinterpret_cast<T*>(new_storage.get());
-                std::size_t n_constructed{};
+                auto ptr = std::make_unique<unsigned char[]>(capacity * sizeof(T));
+                auto first = reinterpret_cast<T *>(ptr.get()), last = first;
 
                 try
                 {
-                        std::experimental::for_each_iter(
-                                begin(), begin() + size(), new_data, [&](auto i, auto j) {
-                                        this->construct_at(j, std::move_if_noexcept(*i));
-                                        ++n_constructed;
-                                });
+                        ecs::for_each_iter(begin(), begin() + size(), first, [&](auto i, auto j) {
+                                this->construct(j, std::move_if_noexcept(*i)), ++last;
+                        });
                 }
                 catch(...)
                 {
-                        for(std::size_t i = 0; i < n_constructed; ++i)
-                                destroy_at(new_data + i);
-
-                        throw;
+                        ecs::for_each_iter(first, last, [&](auto i) { this->destroy(i); });
                 }
 
-                for(std::size_t i = 0; i < size(); ++i)
-                        destroy_at(begin() + i);
+                ecs::for_each_iter(begin(), begin() + size(), [&](auto i) { this->destroy(i); });
+                std::swap(storage_, ptr);
+                capacity_ = capacity;
 
-                std::swap(storage_, new_storage);
-                capacity_ = new_capacity;
                 return true;
         }
 
@@ -224,6 +220,8 @@ struct non_trivial
         int v{};
 };
 
+using ttype = non_trivial;
+
 //
 template <typename Container>
 void test_container_performance_0(Container& arr)
@@ -233,7 +231,7 @@ void test_container_performance_0(Container& arr)
         arr.emplace_back(3);
         arr.emplace_back(4);
 
-        non_trivial s0{5}, s1{8};
+        ttype s0{5}, s1{8};
         arr.push_back(s0);
         arr.push_back(std::move(s1));
         opt_clobber();
@@ -404,7 +402,7 @@ void test_container_performance_8(Container& arr)
         }
 
 // Vector
-using c_vector = std::vector<non_trivial>;
+using c_vector = std::vector<ttype>;
 static void BM_VectorBaseline(benchmark::State& state)
 {
         BM_M_ContainerBaseline(c_vector)
@@ -439,8 +437,7 @@ static void BM_VectorEraseEmpty(benchmark::State& state)
 }
 
 // Contiguous container
-using c_container =
-        std::experimental::contiguous_container<dynamic_uninitialized_memory_buffer<non_trivial>>;
+using c_container = ecs::contiguous_container<dynamic_uninitialized_memory_buffer<ttype>>;
 static void BM_ContiguousContainerBaseline(benchmark::State& state)
 {
         BM_M_ContainerBaseline(c_container)

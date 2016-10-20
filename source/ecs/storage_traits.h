@@ -9,7 +9,7 @@
 #include <cstddef>
 #include <utility>
 
-namespace std::experimental
+namespace ecs
 {
 //
 template <typename Storage>
@@ -28,15 +28,15 @@ struct storage_traits
         // construct/destroy:
         //
         template <typename... Args>
-        static constexpr auto construct_at(storage_type& storage, pointer location, Args&&... args)
+        static constexpr auto construct(storage_type& storage, pointer location, Args&&... args)
         {
-                storage.construct_at(location, std::forward<Args>(args)...);
+                storage.construct(location, std::forward<Args>(args)...);
                 return location;
         }
 
-        static constexpr void destroy_at(storage_type& storage, pointer location) noexcept
+        static constexpr void destroy(storage_type& storage, pointer location) noexcept
         {
-                storage.destroy_at(location);
+                storage.destroy(location);
         }
 
         // iterators:
@@ -64,9 +64,9 @@ struct storage_traits
 
         // capacity:
         //
-        static constexpr bool reserve(storage_type& storage, std::size_t n)
+        static constexpr auto reallocate(storage_type& storage, std::size_t n)
         {
-                return storage.reserve(n);
+                return storage.reallocate(n);
         }
 
         //
@@ -102,9 +102,17 @@ struct storage_traits
         {
                 return static_cast<std::size_t>(storage.capacity());
         }
+
+        // swap: TO DO
+        //
+        static constexpr void swap(storage_type& lhs,
+                                   storage_type& rhs) noexcept(noexcept(std::swap(lhs, rhs)))
+        {
+                std::swap(lhs, rhs);
+        }
 };
 
 //
-} // namespace std::experimental
+} // namespace ecs
 
 #endif // STORAGE_TRAITS_H
