@@ -280,6 +280,14 @@ void test_container_performance_5(Container& arr)
 }
 
 template <typename Container>
+void test_container_performance_5_1(Container& arr)
+{
+        // 13 + 7
+        arr.insert(arr.begin(), 7, 777);
+        opt_clobber();
+}
+
+template <typename Container>
 void test_container_performance_6(Container& arr)
 {
         // 20 - 0
@@ -385,20 +393,37 @@ void test_container_performance_8(Container& arr)
                 opt_clobber();                     \
         }
 
-#define BM_M_ContainerEraseEmpty(C)                \
-        while(state.KeepRunning())                 \
-        {                                          \
-                C arr;                             \
-                arr.reserve(32);                   \
-                opt_escape(arr.data());            \
-                test_container_performance_0(arr); \
-                test_container_performance_1(arr); \
-                test_container_performance_2(arr); \
-                test_container_performance_3(arr); \
-                test_container_performance_4(arr); \
-                test_container_performance_5(arr); \
-                test_container_performance_6(arr); \
-                opt_clobber();                     \
+#define BM_M_ContainerInsert3(C)                     \
+        while(state.KeepRunning())                   \
+        {                                            \
+                C arr;                               \
+                arr.reserve(32);                     \
+                opt_escape(arr.data());              \
+                test_container_performance_0(arr);   \
+                test_container_performance_1(arr);   \
+                test_container_performance_2(arr);   \
+                test_container_performance_3(arr);   \
+                test_container_performance_4(arr);   \
+                test_container_performance_5(arr);   \
+                test_container_performance_5_1(arr); \
+                opt_clobber();                       \
+        }
+
+#define BM_M_ContainerEraseEmpty(C)                  \
+        while(state.KeepRunning())                   \
+        {                                            \
+                C arr;                               \
+                arr.reserve(32);                     \
+                opt_escape(arr.data());              \
+                test_container_performance_0(arr);   \
+                test_container_performance_1(arr);   \
+                test_container_performance_2(arr);   \
+                test_container_performance_3(arr);   \
+                test_container_performance_4(arr);   \
+                test_container_performance_5(arr);   \
+                test_container_performance_5_1(arr); \
+                test_container_performance_6(arr);   \
+                opt_clobber();                       \
         }
 
 // Vector
@@ -430,6 +455,10 @@ static void BM_VectorInsert1(benchmark::State& state)
 static void BM_VectorInsert2(benchmark::State& state)
 {
         BM_M_ContainerInsert2(c_vector)
+}
+static void BM_VectorInsert3(benchmark::State& state)
+{
+        BM_M_ContainerInsert3(c_vector)
 }
 static void BM_VectorEraseEmpty(benchmark::State& state)
 {
@@ -466,6 +495,10 @@ static void BM_ContiguousContainerInsert2(benchmark::State& state)
 {
         BM_M_ContainerInsert2(c_container)
 }
+static void BM_ContiguousContainerInsert3(benchmark::State& state)
+{
+        BM_M_ContainerInsert3(c_container)
+}
 static void BM_ContiguousContainerEraseEmpty(benchmark::State& state)
 {
         BM_M_ContainerEraseEmpty(c_container)
@@ -479,6 +512,7 @@ BENCHMARK(BM_VectorEmplace);
 BENCHMARK(BM_VectorInsert0);
 BENCHMARK(BM_VectorInsert1);
 BENCHMARK(BM_VectorInsert2);
+BENCHMARK(BM_VectorInsert3);
 BENCHMARK(BM_VectorEraseEmpty);
 
 BENCHMARK(BM_ContiguousContainerBaseline);
@@ -488,6 +522,7 @@ BENCHMARK(BM_ContiguousContainerEmplace);
 BENCHMARK(BM_ContiguousContainerInsert0);
 BENCHMARK(BM_ContiguousContainerInsert1);
 BENCHMARK(BM_ContiguousContainerInsert2);
+BENCHMARK(BM_ContiguousContainerInsert3);
 BENCHMARK(BM_ContiguousContainerEraseEmpty);
 
 BENCHMARK_MAIN()

@@ -16,8 +16,6 @@ template <typename Storage>
 struct storage_traits
 {
         // types:
-        using no_exceptions = typename Storage::no_exceptions;
-
         //
         using storage_type = Storage;
         using value_type = typename Storage::value_type;
@@ -28,7 +26,7 @@ struct storage_traits
         // construct/destroy:
         //
         template <typename... Args>
-        static constexpr auto construct(storage_type& storage, pointer location, Args&&... args)
+        static constexpr pointer construct(storage_type& storage, pointer location, Args&&... args)
         {
                 storage.construct(location, std::forward<Args>(args)...);
                 return location;
@@ -41,30 +39,30 @@ struct storage_traits
 
         // iterators:
         //
-        static constexpr auto begin(storage_type& storage) noexcept
+        static constexpr pointer begin(storage_type& storage) noexcept
         {
-                return static_cast<pointer>(storage.begin());
+                return storage.begin();
         }
 
-        static constexpr auto begin(const storage_type& storage) noexcept
+        static constexpr const_pointer begin(const storage_type& storage) noexcept
         {
-                return static_cast<const_pointer>(storage.begin());
+                return storage.begin();
         }
 
         //
-        static constexpr auto end(storage_type& storage) noexcept
+        static constexpr pointer end(storage_type& storage) noexcept
         {
                 return storage_traits::begin(storage) + static_cast<std::size_t>(storage.size());
         }
 
-        static constexpr auto end(const storage_type& storage) noexcept
+        static constexpr const_pointer end(const storage_type& storage) noexcept
         {
                 return storage_traits::begin(storage) + static_cast<std::size_t>(storage.size());
         }
 
         // capacity:
         //
-        static constexpr auto reallocate(storage_type& storage, std::size_t n)
+        static constexpr bool reallocate(storage_type& storage, std::size_t n)
         {
                 return storage.reallocate(n);
         }
@@ -93,12 +91,12 @@ struct storage_traits
         }
 
         //
-        static constexpr auto max_size(const storage_type& storage) noexcept
+        static constexpr std::size_t max_size(const storage_type& storage) noexcept
         {
                 return static_cast<std::size_t>(storage.max_size());
         }
 
-        static constexpr auto capacity(const storage_type& storage) noexcept
+        static constexpr std::size_t capacity(const storage_type& storage) noexcept
         {
                 return static_cast<std::size_t>(storage.capacity());
         }

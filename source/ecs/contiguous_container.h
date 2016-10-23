@@ -345,16 +345,12 @@ private:
                 {
                         traits::size(*this) -= static_cast<size_type>(sentinel - assigned);
                         destroy_range(assigned, sentinel);
+                        return true;
                 }
-                else
-                {
-                        for(; first != last; ++first)
-                        {
-                                auto p = emplace_back(*first);
-                                if(p == end())
-                                        return false;
-                        }
-                }
+
+                for(iterator p{}; first != last; ++first)
+                        if(p = emplace_back(*first), p == end())
+                                return false;
 
                 return true;
         }
@@ -378,8 +374,7 @@ private:
                 }
                 else
                 {
-                        auto mid = first;
-                        std::advance(mid, size());
+                        auto mid = std::next(first, size());
 
                         for_each_iter(
                                 std::copy(first, mid, begin()), begin() + n, [this, &mid](auto i) {
@@ -399,12 +394,9 @@ private:
         {
                 auto index = position - begin();
 
-                for(; first != last; ++first)
-                {
-                        auto p = emplace(position, *first);
-                        if(p == end())
+                for(iterator p{}; first != last; ++first)
+                        if(p = emplace(position, *first), p == end())
                                 return end();
-                }
 
                 return begin() + index;
         }
@@ -423,15 +415,13 @@ private:
                 if(n == 0)
                         return position;
 
-                auto adjusted_size = n + size();
-                if(adjusted_size > max_size() || adjusted_size < size())
-                        return end();
-
-                if(adjusted_size > capacity())
+                auto sz = n + size();
+                if(sz > capacity() || sz < n)
                 {
                         auto index = position - begin();
-                        if(!traits::reallocate(*this, adjusted_size))
+                        if(!traits::reallocate(*this, sz))
                                 return end();
+
                         position = begin() + index;
                 }
 
@@ -440,15 +430,11 @@ private:
                 auto last = end(), first_to_relocate = last - m, first_to_construct = position + m;
 
                 if(m != n)
-                {
-                        auto mid = first;
-                        std::advance(mid, m);
-
-                        for_each_iter(first_to_construct, position + n, [this, &mid](auto i) {
-                                traits::construct(*this, i, *mid), (void)++traits::size(*this),
-                                        (void)++mid;
-                        });
-                }
+                        for_each_iter(first_to_construct, position + n, std::next(first, m),
+                                      [this](auto i, auto j) {
+                                              traits::construct(*this, i, *j),
+                                                      (void)++traits::size(*this);
+                                      });
 
                 for_each_iter(first_to_relocate, last, first_to_relocate + n, [this](auto i,
                                                                                      auto j) {

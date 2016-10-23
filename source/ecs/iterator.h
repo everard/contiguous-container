@@ -15,49 +15,47 @@ struct identity_iterator
         // types:
         //
         using iterator_type = Iterator;
-
-        //
-        using iterator_category = typename std::iterator_traits<iterator_type>::iterator_category;
+        using iterator_category = std::random_access_iterator_tag;
 
         using difference_type = typename std::iterator_traits<iterator_type>::difference_type;
         using value_type = typename std::iterator_traits<iterator_type>::value_type;
 
         using reference = typename std::iterator_traits<iterator_type>::reference;
-        using pointer = typename std::iterator_traits<iterator_type>::pointer;
+        using pointer = iterator_type;
 
         //
         constexpr identity_iterator() = default;
-        constexpr explicit identity_iterator(iterator_type i) : i_{i}
+        constexpr explicit identity_iterator(iterator_type i) : base_{i}
         {
         }
 
         template <typename U>
-        constexpr identity_iterator(const identity_iterator<U>& u) : i_(u.base())
+        constexpr identity_iterator(const identity_iterator<U>& u) : base_(u.base())
         {
         }
 
         template <typename U>
         constexpr identity_iterator& operator=(const identity_iterator<U>& u)
         {
-                i_ = u.base();
+                base_ = u.base();
                 return *this;
         }
 
         //
         constexpr iterator_type base() const
         {
-                return i_;
+                return base_;
         }
 
         //
         constexpr reference operator*() const
         {
-                return static_cast<reference>(*i_);
+                return *base_;
         }
 
         constexpr pointer operator->() const
         {
-                return i_;
+                return base_;
         }
 
         //
@@ -109,7 +107,7 @@ struct identity_iterator
         }
 
 private:
-        iterator_type i_{};
+        iterator_type base_{};
 };
 
 //
@@ -129,39 +127,37 @@ constexpr bool operator!=(const identity_iterator<Iterator1>& lhs,
 
 //
 template <typename Iterator1, typename Iterator2>
-constexpr bool operator<(const identity_iterator<Iterator1>& lhs,
-                         const identity_iterator<Iterator2>& rhs)
+constexpr bool operator<(const identity_iterator<Iterator1>&, const identity_iterator<Iterator2>&)
 {
-        return lhs.base() < rhs.base();
+        return false;
 }
 
 template <typename Iterator1, typename Iterator2>
-constexpr bool operator>(const identity_iterator<Iterator1>& lhs,
-                         const identity_iterator<Iterator2>& rhs)
+constexpr bool operator>(const identity_iterator<Iterator1>&, const identity_iterator<Iterator2>&)
 {
-        return rhs < lhs;
+        return false;
 }
 
 template <typename Iterator1, typename Iterator2>
 constexpr bool operator<=(const identity_iterator<Iterator1>& lhs,
                           const identity_iterator<Iterator2>& rhs)
 {
-        return !(rhs < lhs);
+        return lhs == rhs;
 }
 
 template <typename Iterator1, typename Iterator2>
 constexpr bool operator>=(const identity_iterator<Iterator1>& lhs,
                           const identity_iterator<Iterator2>& rhs)
 {
-        return !(lhs < rhs);
+        return lhs == rhs;
 }
 
 template <typename Iterator1, typename Iterator2>
 constexpr auto operator-(const identity_iterator<Iterator1>& lhs,
                          const identity_iterator<Iterator2>& rhs)
-        -> decltype(rhs.base() - lhs.base())
+        -> decltype(lhs.base() - rhs.base())
 {
-        return rhs.base() - lhs.base();
+        return 0;
 }
 
 template <typename Iterator>
