@@ -2,336 +2,13 @@
 // Distributed under the Boost Software License, Version 1.0.
 //(See accompanying file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 //
-#include "../source/ecs/contiguous_container.h"
+#include "common.h"
 
 #include <iostream>
 #include <fstream>
 #include <iomanip>
 #include <vector>
 #include <chrono>
-
-/*template <typename T>
-struct storage
-{
-using value_type = T;
-using no_exceptions = std::true_type;
-
-~storage()
-{
-if(!std::is_trivially_destructible<T>::value)
-{
-for(std::size_t i = 0; i < size_; ++i)
-begin()[i].~T();
-}
-}
-
-template <typename... Args>
-void construct(T* location, Args&&... args)
-{
-::new(location) T{std::forward<Args>(args)...};
-}
-
-void destroy(T* location) noexcept
-{
-if(!std::is_trivially_destructible<T>::value)
-location->~T();
-}
-
-auto reallocate(std::size_t n)
-{
-auto capacity = std::max(size_ + size_, n);
-capacity = (capacity < size_ || capacity > max_size()) ? max_size() : capacity;
-
-auto ptr = std::make_unique<unsigned char[]>(capacity * sizeof(T));
-auto first = reinterpret_cast<T *>(ptr.get()), last = first;
-
-try
-{
-ecs::for_each_iter(begin(), begin() + size(), first, [&](auto i, auto j) {
-this->construct(j, std::move_if_noexcept(*i)), ++last;
-});
-}
-catch(...)
-{
-ecs::for_each_iter(first, last, [&](auto i) { this->destroy(i); });
-}
-
-ecs::for_each_iter(begin(), begin() + size(), [&](auto i) { this->destroy(i); });
-std::swap(storage_, ptr);
-capacity_ = capacity;
-
-return true;
-}
-
-T* begin() noexcept
-{
-return reinterpret_cast<T*>(storage_.get());
-}
-
-const T* begin() const noexcept
-{
-return reinterpret_cast<const T*>(storage_.get());
-}
-
-constexpr auto& size() noexcept
-{
-return size_;
-}
-
-constexpr auto& size() const noexcept
-{
-return size_;
-}
-
-constexpr auto max_size() const noexcept
-{
-return static_cast<std::size_t>(std::numeric_limits<std::ptrdiff_t>::max());
-}
-
-constexpr auto capacity() const noexcept
-{
-return capacity_;
-}
-
-private:
-std::unique_ptr<unsigned char[]> storage_{};
-std::size_t size_{}, capacity_{};
-};
-
-template <typename Container>
-void print_container(Container& arr)
-{
-std::cout << "container now has: ";
-for(auto& v : arr)
-std::cout << v << ' ';
-std::cout << std::endl;
-}
-
-int main()
-{
-ecs::contiguous_container<storage<int>> a;
-a.reserve(8);
-
-auto p = a.emplace_back(0);
-p = a.emplace_back(1);
-
-//p = a.emplace(a.begin(), 1);
-p = a.emplace(a.begin(), 2);
-std::cout << *p << '\n';
-print_container(a);
-
-return 0;
-}*/
-template <typename T, std::size_t N>
-struct uninitialized_memory_buffer
-{
-        using value_type = T;
-        using no_exceptions = std::false_type;
-
-        ~uninitialized_memory_buffer()
-        {
-                if(!std::is_trivially_destructible<T>::value)
-                {
-                        for(std::size_t i = 0; i < size_; ++i)
-                                begin()[i].~T();
-                }
-        }
-
-        template <typename... Args>
-        void construct(T* location, Args&&... args)
-        {
-                ::new(location) T{std::forward<Args>(args)...};
-        }
-
-        void destroy(T* location) noexcept
-        {
-                if(!std::is_trivially_destructible<T>::value)
-                        location->~T();
-        }
-
-        static constexpr auto reallocate(std::size_t) noexcept
-        {
-                return false;
-        }
-
-        T* begin() noexcept
-        {
-                return reinterpret_cast<T*>(storage_);
-        }
-
-        const T* begin() const noexcept
-        {
-                return reinterpret_cast<const T*>(storage_);
-        }
-
-        constexpr auto& size() noexcept
-        {
-                return size_;
-        }
-
-        constexpr auto& size() const noexcept
-        {
-                return size_;
-        }
-
-        constexpr auto max_size() const noexcept
-        {
-                return N;
-        }
-
-        constexpr auto capacity() const noexcept
-        {
-                return N;
-        }
-
-private:
-        alignas(T) unsigned char storage_[N * sizeof(T)];
-        std::size_t size_{};
-};
-
-template <typename T>
-struct dynamic_uninitialized_memory_buffer
-{
-        using value_type = T;
-        using no_exceptions = std::true_type;
-
-        ~dynamic_uninitialized_memory_buffer()
-        {
-                if(!std::is_trivially_destructible<T>::value)
-                {
-                        for(std::size_t i = 0; i < size_; ++i)
-                                begin()[i].~T();
-                }
-        }
-
-        template <typename... Args>
-        void construct_at(T* location, Args&&... args)
-        {
-                ::new(location) T{std::forward<Args>(args)...};
-        }
-
-        void destroy_at(T* location) noexcept
-        {
-                if(!std::is_trivially_destructible<T>::value)
-                        location->~T();
-        }
-
-        bool reallocate(std::size_t n)
-        {
-                auto capacity = std::max(size_ + size_, n);
-                capacity = (capacity < size_ || capacity > max_size()) ? max_size() : capacity;
-
-                auto ptr = std::make_unique<unsigned char[]>(capacity * sizeof(T));
-                auto first = reinterpret_cast<T *>(ptr.get()), last = first;
-
-                try
-                {
-                        ecs::for_each_iter(begin(), begin() + size(), first, [&](auto i, auto j) {
-                                this->construct(j, std::move_if_noexcept(*i)), ++last;
-                        });
-                }
-                catch(...)
-                {
-                        ecs::for_each_iter(first, last, [&](auto i) { this->destroy(i); });
-                }
-
-                ecs::for_each_iter(begin(), begin() + size(), [&](auto i) { this->destroy(i); });
-                std::swap(storage_, ptr);
-                capacity_ = capacity;
-
-                return true;
-        }
-
-        T* begin() noexcept
-        {
-                return reinterpret_cast<T*>(storage_.get());
-        }
-
-        const T* begin() const noexcept
-        {
-                return reinterpret_cast<const T*>(storage_.get());
-        }
-
-        constexpr auto& size() noexcept
-        {
-                return size_;
-        }
-
-        constexpr auto& size() const noexcept
-        {
-                return size_;
-        }
-
-        constexpr auto max_size() const noexcept
-        {
-                return static_cast<std::size_t>(std::numeric_limits<std::ptrdiff_t>::max());
-        }
-
-        constexpr auto capacity() const noexcept
-        {
-                return capacity_;
-        }
-
-private:
-        std::unique_ptr<unsigned char[]> storage_{};
-        std::size_t size_{}, capacity_{};
-};
-
-template <typename T, std::size_t N>
-struct literal_storage
-{
-        using value_type = T;
-        using no_exceptions = std::false_type;
-
-        template <typename... Args>
-        constexpr void construct(T* location, Args&&... args)
-        {
-                *location = T{std::forward<Args>(args)...};
-        }
-
-        constexpr void destroy(T*) noexcept
-        {
-        }
-
-        static constexpr auto reallocate(std::size_t) noexcept
-        {
-                return false;
-        }
-
-        constexpr T* begin() noexcept
-        {
-                return storage_;
-        }
-
-        constexpr const T* begin() const noexcept
-        {
-                return storage_;
-        }
-
-        constexpr auto& size() noexcept
-        {
-                return size_;
-        }
-
-        constexpr auto& size() const noexcept
-        {
-                return size_;
-        }
-
-        constexpr auto max_size() const noexcept
-        {
-                return N;
-        }
-
-        constexpr auto capacity() const noexcept
-        {
-                return N;
-        }
-
-protected:
-        T storage_[N]{};
-        std::size_t size_{};
-};
 
 // This function uses bounded_array in constexpr context
 constexpr int sum()
@@ -526,6 +203,26 @@ void test_container(Container& arr)
         else
                 std::cout << "next element: " << next->x << '\n' << std::endl;
 
+        std::cout << "\ninsert 3 elements at begin + 5 from a1 using input iterators\n";
+        next = arr.insert(arr.begin() + 5, make_input_iterator(a1), make_input_iterator(a1 + 3));
+        print_container(arr);
+        if(next == arr.end())
+                std::cout << "next element is arr.end()" << std::endl;
+        else
+                std::cout << "next element: " << next->x << '\n' << std::endl;
+
+
+        std::cout << "\ncreate array a2={301, 302, 303, 304}\n";
+        int a2[] = {301, 302, 303, 304};
+
+        std::cout << "\ninsert elements of a2 before the last element\n";
+        next = arr.insert(arr.end() - 1, make_input_iterator(std::begin(a2)), make_input_iterator(std::end(a2)));
+        print_container(arr);
+        if(next == arr.end())
+                std::cout << "next element is arr.end()" << std::endl;
+        else
+                std::cout << "next element: " << next->x << '\n' << std::endl;
+
         std::cout << "\nerase empty interval" << std::endl;
         next = arr.erase(arr.begin(), arr.begin());
         print_container(arr);
@@ -539,6 +236,19 @@ void test_container(Container& arr)
         std::cout << "\nassign {2001, 2002, 2003, 2004, 2005, 2006, 2007}" << std::endl;
         arr.assign({2001, 2002, 2003, 2004, 2005, 2006, 2007});
         print_container(arr);
+
+        std::cout << "\ncreate array a3={4001, 4002, 4003, 4004}\n";
+        int a3[] = {4001, 4002, 4003, 4004};
+        std::cout << "\nassign a3 with input iterator" << std::endl;
+        arr.assign(make_input_iterator(std::begin(a3)), make_input_iterator(std::end(a3)));
+        print_container(arr);
+
+        std::cout << "\ncreate array a4={5001, 5002, 5003, 5004, 5005, 5006, 5007, 5008}\n";
+        int a4[] = {5001, 5002, 5003, 5004, 5005, 5006, 5007, 5008};
+        std::cout << "\nassign a4 with input iterator" << std::endl;
+        arr.assign(make_input_iterator(std::begin(a4)), make_input_iterator(std::end(a4)));
+        print_container(arr);
+
         std::cout << '\n';
 }
 
@@ -547,14 +257,14 @@ int main()
         std::cout
                 << "\n--------------------------------------------------\nTESTING BOUNDED_ARRAY\n";
         {
-                ecs::contiguous_container<uninitialized_memory_buffer<some_type, 32>> arr;
+                ecs::contiguous_container<uninitialized_memory_buffer<some_type, 64>> arr;
                 test_container(arr);
         }
 
         std::cout << "\n--------------------------------------------------\nTESTING STD::VECTOR\n";
         {
                 std::vector<some_type> arr;
-                arr.reserve(32);
+                arr.reserve(64);
                 test_container(arr);
         }
         return 0;

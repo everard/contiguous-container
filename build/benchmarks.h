@@ -2,7 +2,7 @@
 // Distributed under the Boost Software License, Version 1.0.
 //(See accompanying file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 //
-#include "../source/ecs/contiguous_container.h"
+#include "common.h"
 #include <benchmark/benchmark.h>
 
 #include <iostream>
@@ -21,508 +21,307 @@ static void opt_clobber()
         asm volatile("" : : : "memory");
 }
 
-template <typename T, std::size_t N>
-struct uninitialized_memory_buffer
-{
-        using value_type = T;
-        using no_exceptions = std::true_type;
-
-        ~uninitialized_memory_buffer()
-        {
-                if(!std::is_trivially_destructible<T>::value)
-                {
-                        for(std::size_t i = 0; i < size_; ++i)
-                                (begin() + i)->~T();
-                }
-        }
-
-        template <typename... Args>
-        void construct(T* location, Args&&... args)
-        {
-                ::new(location) T{std::forward<Args>(args)...};
-        }
-
-        void destroy(T* location) noexcept
-        {
-                if /*constexpr*/ (!std::is_trivially_destructible<T>::value)
-                        location->~T();
-        }
-
-        static constexpr auto reallocate(std::size_t) noexcept
-        {
-                return false;
-        }
-
-        T* begin() noexcept
-        {
-                return reinterpret_cast<T*>(storage_);
-        }
-
-        const T* begin() const noexcept
-        {
-                return reinterpret_cast<const T*>(storage_);
-        }
-
-        constexpr auto& size() noexcept
-        {
-                return size_;
-        }
-
-        constexpr auto& size() const noexcept
-        {
-                return size_;
-        }
-
-        constexpr auto max_size() const noexcept
-        {
-                return N;
-        }
-
-        constexpr auto capacity() const noexcept
-        {
-                return N;
-        }
-
-private:
-        alignas(T) unsigned char storage_[N * sizeof(T)];
-        std::size_t size_{};
-};
-
-template <typename T>
-struct dynamic_uninitialized_memory_buffer
-{
-        using value_type = T;
-        using no_exceptions = std::true_type;
-
-        ~dynamic_uninitialized_memory_buffer()
-        {
-                if(!std::is_trivially_destructible<T>::value)
-                {
-                        for(std::size_t i = 0; i < size_; ++i)
-                                begin()[i].~T();
-                }
-        }
-
-        template <typename... Args>
-        void construct(T* location, Args&&... args)
-        {
-                ::new(location) T{std::forward<Args>(args)...};
-        }
-
-        void destroy(T* location) noexcept
-        {
-                if /*constexpr*/ (!std::is_trivially_destructible<T>::value)
-                        location->~T();
-        }
-
-        bool reallocate(std::size_t n)
-        {
-                if(n > max_size())
-                        return false;
-
-                if(size_ == 0)
-                {
-                        storage_.reset(::new unsigned char[n * sizeof(T)]);
-                        capacity_ = n;
-
-                        return true;
-                }
-
-                auto capacity = std::max(size_ + size_, n);
-                capacity = (capacity < size_ || capacity > max_size()) ? max_size() : capacity;
-
-                auto ptr = std::make_unique<unsigned char[]>(capacity * sizeof(T));
-                auto first = reinterpret_cast<T *>(ptr.get()), last = first;
-
-                try
-                {
-                        ecs::for_each_iter(begin(), begin() + size(), first, [&](auto i, auto j) {
-                                this->construct(j, std::move_if_noexcept(*i)), ++last;
-                        });
-                }
-                catch(...)
-                {
-                        ecs::for_each_iter(first, last, [&](auto i) { this->destroy(i); });
-                }
-
-                ecs::for_each_iter(begin(), begin() + size(), [&](auto i) { this->destroy(i); });
-                std::swap(storage_, ptr);
-                capacity_ = capacity;
-
-                return true;
-        }
-
-        T* begin() noexcept
-        {
-                return reinterpret_cast<T*>(storage_.get());
-        }
-
-        const T* begin() const noexcept
-        {
-                return reinterpret_cast<const T*>(storage_.get());
-        }
-
-        constexpr auto& size() noexcept
-        {
-                return size_;
-        }
-
-        constexpr auto& size() const noexcept
-        {
-                return size_;
-        }
-
-        constexpr auto max_size() const noexcept
-        {
-                return static_cast<std::size_t>(std::numeric_limits<std::ptrdiff_t>::max());
-        }
-
-        constexpr auto capacity() const noexcept
-        {
-                return capacity_;
-        }
-
-private:
-        std::unique_ptr<unsigned char[]> storage_{};
-        std::size_t size_{}, capacity_{};
-};
-
-struct non_trivial
-{
-        non_trivial() = default;
-        non_trivial(int x) : v{x}
-        {
-        }
-
-        non_trivial(const non_trivial& o) : v{o.v}
-        {
-        }
-        non_trivial(non_trivial&& o) : v{o.v}
-        {
-        }
-
-        non_trivial& operator=(const non_trivial& rhs)
-        {
-                v = rhs.v;
-                return *this;
-        }
-        non_trivial& operator=(non_trivial&& rhs)
-        {
-                v = rhs.v;
-                return *this;
-        }
-
-        ~non_trivial()
-        {
-                v = 0;
-        }
-
-        int v{};
-};
-
 using ttype = non_trivial;
 
 //
 template <typename Container>
-void test_container_performance_0(Container& arr)
+void test_container_performance_baseline(Container& arr)
 {
-        arr.emplace_back(1);
-        arr.emplace_back(2);
-        arr.emplace_back(3);
-        arr.emplace_back(4);
-
-        ttype s0{5}, s1{8};
-        arr.push_back(s0);
-        arr.push_back(std::move(s1));
+        arr.assign({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18});
         opt_clobber();
 }
 
 template <typename Container>
-void test_container_performance_1(Container& arr)
+void test_container_performance_emplace_back(Container& arr)
 {
-        // 6 - 3
-        arr.erase(arr.begin() + 1, arr.begin() + 3);
+        test_container_performance_baseline(arr);
+
+        arr.emplace_back(1);
+        arr.emplace_back(1);
+        arr.emplace_back(1);
+        arr.emplace_back(1);
+        arr.emplace_back(1);
+        arr.emplace_back(1);
+        arr.emplace_back(1);
+        arr.emplace_back(1);
+        arr.emplace_back(1);
+        arr.emplace_back(1);
+        arr.emplace_back(1);
+        arr.emplace_back(1);
+        opt_clobber();
+}
+
+template <typename Container>
+void test_container_performance_erase_one(Container& arr)
+{
+        test_container_performance_baseline(arr);
+
         arr.erase(arr.begin());
         opt_clobber();
 }
 
 template <typename Container>
-void test_container_performance_2(Container& arr)
+void test_container_performance_erase_range(Container& arr)
 {
-        // 3 + 1
-        arr.emplace(arr.begin() + 1, 15);
+        test_container_performance_baseline(arr);
+
+        arr.erase(arr.begin(), arr.begin() + 4);
         opt_clobber();
 }
 
 template <typename Container>
-void test_container_performance_3(Container& arr)
+void test_container_performance_erase_empty_range(Container& arr)
 {
-        // 4 + 4
-        arr.insert(arr.begin() + 1, {101, 102, 103, 104});
-        opt_clobber();
-}
+        test_container_performance_baseline(arr);
 
-template <typename Container>
-void test_container_performance_4(Container& arr)
-{
-        // 8 + 5
-        int a1[] = {201, 202, 203, 204, 205};
-        arr.insert(arr.begin() + 4, std::begin(a1), std::end(a1));
-        opt_clobber();
-}
-
-template <typename Container>
-void test_container_performance_5(Container& arr)
-{
-        // 13 + 7
-        arr.insert(arr.end(), 7, 777);
-        opt_clobber();
-}
-
-template <typename Container>
-void test_container_performance_5_1(Container& arr)
-{
-        // 13 + 7
-        arr.insert(arr.begin(), 7, 777);
-        opt_clobber();
-}
-
-template <typename Container>
-void test_container_performance_6(Container& arr)
-{
-        // 20 - 0
         arr.erase(arr.begin(), arr.begin());
         opt_clobber();
 }
 
 template <typename Container>
-void test_container_performance_7(Container& arr)
+void test_container_performance_emplace(Container& arr)
 {
+        test_container_performance_baseline(arr);
+
+        arr.emplace(arr.begin() + 1, 15);
+        opt_clobber();
+}
+
+template <typename Container>
+void test_container_performance_insert_initlist(Container& arr)
+{
+        test_container_performance_baseline(arr);
+
+        arr.insert(arr.begin() + 1, {101, 102, 103, 104, 105});
+        opt_clobber();
+}
+
+template <typename Container>
+void test_container_performance_insert_range(Container& arr)
+{
+        test_container_performance_baseline(arr);
+
+        // 8 + 5
+        int a[] = {201, 202, 203, 204, 205};
+        arr.insert(arr.begin() + 1, std::begin(a), std::end(a));
+        opt_clobber();
+}
+
+template <typename Container>
+void test_container_performance_insert_n_at_end(Container& arr)
+{
+        test_container_performance_baseline(arr);
+
+        arr.insert(arr.end(), 5, 777);
+        opt_clobber();
+}
+
+template <typename Container>
+void test_container_performance_insert_n_at_begin(Container& arr)
+{
+        test_container_performance_baseline(arr);
+
+        arr.insert(arr.begin(), 5, 777);
+        opt_clobber();
+}
+
+template <typename Container>
+void test_container_performance_insert_range_input_iter(Container& arr)
+{
+        test_container_performance_baseline(arr);
+
+        int a[] = {301, 302, 303, 304, 305};
+        arr.insert(arr.begin() + 1, make_input_iterator(std::begin(a)),
+                   make_input_iterator(std::end(a)));
+        opt_clobber();
+}
+
+template <typename Container>
+void test_container_performance_insert_range_input_iter_at_end(Container& arr)
+{
+        test_container_performance_baseline(arr);
+
+        // 24 + 6
+        int a[] = {401, 402, 403, 404, 405};
+        arr.insert(arr.end(), make_input_iterator(std::begin(a)), make_input_iterator(std::end(a)));
+        opt_clobber();
+}
+
+template <typename Container>
+void test_container_performance_assign_less(Container& arr)
+{
+        test_container_performance_baseline(arr);
         arr.assign({1001, 1002, 1003, 1004, 1005});
         opt_clobber();
 }
 
 template <typename Container>
-void test_container_performance_8(Container& arr)
+void test_container_performance_assign_more(Container& arr)
 {
-        arr.assign({2001, 2002, 2003, 2004, 2005, 2006, 2007});
+        test_container_performance_baseline(arr);
+        arr.assign({2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011,
+                    2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022});
         opt_clobber();
 }
 
 ////////////////////////// Benchmarks
-#define BM_M_ContainerBaseline(C)       \
+#define BM_M_Container(C, test)         \
         while(state.KeepRunning())      \
         {                               \
                 C arr;                  \
-                arr.reserve(32);        \
+                arr.reserve(64);        \
                 opt_escape(arr.data()); \
-        }
-
-#define BM_M_ContainerEmplaceBack(C)               \
-        while(state.KeepRunning())                 \
-        {                                          \
-                C arr;                             \
-                arr.reserve(32);                   \
-                opt_escape(arr.data());            \
-                test_container_performance_0(arr); \
-                opt_clobber();                     \
-        }
-
-#define BM_M_ContainerErase(C)                     \
-        while(state.KeepRunning())                 \
-        {                                          \
-                C arr;                             \
-                arr.reserve(32);                   \
-                opt_escape(arr.data());            \
-                test_container_performance_0(arr); \
-                test_container_performance_1(arr); \
-                opt_clobber();                     \
-        }
-
-#define BM_M_ContainerEmplace(C)                   \
-        while(state.KeepRunning())                 \
-        {                                          \
-                C arr;                             \
-                arr.reserve(32);                   \
-                opt_escape(arr.data());            \
-                test_container_performance_0(arr); \
-                test_container_performance_1(arr); \
-                test_container_performance_2(arr); \
-                opt_clobber();                     \
-        }
-
-#define BM_M_ContainerInsert0(C)                   \
-        while(state.KeepRunning())                 \
-        {                                          \
-                C arr;                             \
-                arr.reserve(32);                   \
-                opt_escape(arr.data());            \
-                test_container_performance_0(arr); \
-                test_container_performance_1(arr); \
-                test_container_performance_2(arr); \
-                test_container_performance_3(arr); \
-                opt_clobber();                     \
-        }
-
-#define BM_M_ContainerInsert1(C)                   \
-        while(state.KeepRunning())                 \
-        {                                          \
-                C arr;                             \
-                arr.reserve(32);                   \
-                opt_escape(arr.data());            \
-                test_container_performance_0(arr); \
-                test_container_performance_1(arr); \
-                test_container_performance_2(arr); \
-                test_container_performance_3(arr); \
-                test_container_performance_4(arr); \
-                opt_clobber();                     \
-        }
-
-#define BM_M_ContainerInsert2(C)                   \
-        while(state.KeepRunning())                 \
-        {                                          \
-                C arr;                             \
-                arr.reserve(32);                   \
-                opt_escape(arr.data());            \
-                test_container_performance_0(arr); \
-                test_container_performance_1(arr); \
-                test_container_performance_2(arr); \
-                test_container_performance_3(arr); \
-                test_container_performance_4(arr); \
-                test_container_performance_5(arr); \
-                opt_clobber();                     \
-        }
-
-#define BM_M_ContainerInsert3(C)                     \
-        while(state.KeepRunning())                   \
-        {                                            \
-                C arr;                               \
-                arr.reserve(32);                     \
-                opt_escape(arr.data());              \
-                test_container_performance_0(arr);   \
-                test_container_performance_1(arr);   \
-                test_container_performance_2(arr);   \
-                test_container_performance_3(arr);   \
-                test_container_performance_4(arr);   \
-                test_container_performance_5(arr);   \
-                test_container_performance_5_1(arr); \
-                opt_clobber();                       \
-        }
-
-#define BM_M_ContainerEraseEmpty(C)                  \
-        while(state.KeepRunning())                   \
-        {                                            \
-                C arr;                               \
-                arr.reserve(32);                     \
-                opt_escape(arr.data());              \
-                test_container_performance_0(arr);   \
-                test_container_performance_1(arr);   \
-                test_container_performance_2(arr);   \
-                test_container_performance_3(arr);   \
-                test_container_performance_4(arr);   \
-                test_container_performance_5(arr);   \
-                test_container_performance_5_1(arr); \
-                test_container_performance_6(arr);   \
-                opt_clobber();                       \
+                test(arr);              \
+                opt_clobber();          \
         }
 
 // Vector
 using c_vector = std::vector<ttype>;
 static void BM_VectorBaseline(benchmark::State& state)
 {
-        BM_M_ContainerBaseline(c_vector)
+        BM_M_Container(c_vector, test_container_performance_baseline);
 }
 static void BM_VectorEmplaceBack(benchmark::State& state)
 {
-        BM_M_ContainerEmplaceBack(c_vector)
+        BM_M_Container(c_vector, test_container_performance_emplace_back);
 }
-static void BM_VectorErase(benchmark::State& state)
+static void BM_VectorEraseOne(benchmark::State& state)
 {
-        BM_M_ContainerErase(c_vector)
+        BM_M_Container(c_vector, test_container_performance_erase_one);
+}
+static void BM_VectorEraseRange(benchmark::State& state)
+{
+        BM_M_Container(c_vector, test_container_performance_erase_range);
+}
+static void BM_VectorEraseEmptyRange(benchmark::State& state)
+{
+        BM_M_Container(c_vector, test_container_performance_erase_empty_range);
 }
 static void BM_VectorEmplace(benchmark::State& state)
 {
-        BM_M_ContainerEmplace(c_vector)
+        BM_M_Container(c_vector, test_container_performance_emplace);
 }
-static void BM_VectorInsert0(benchmark::State& state)
+static void BM_VectorInsertInitList(benchmark::State& state)
 {
-        BM_M_ContainerInsert0(c_vector)
+        BM_M_Container(c_vector, test_container_performance_insert_initlist);
 }
-static void BM_VectorInsert1(benchmark::State& state)
+static void BM_VectorInsertRange(benchmark::State& state)
 {
-        BM_M_ContainerInsert1(c_vector)
+        BM_M_Container(c_vector, test_container_performance_insert_range);
 }
-static void BM_VectorInsert2(benchmark::State& state)
+static void BM_VectorInsertNAtEnd(benchmark::State& state)
 {
-        BM_M_ContainerInsert2(c_vector)
+        BM_M_Container(c_vector, test_container_performance_insert_n_at_end);
 }
-static void BM_VectorInsert3(benchmark::State& state)
+static void BM_VectorInsertNAtBegin(benchmark::State& state)
 {
-        BM_M_ContainerInsert3(c_vector)
+        BM_M_Container(c_vector, test_container_performance_insert_n_at_begin);
 }
-static void BM_VectorEraseEmpty(benchmark::State& state)
+static void BM_VectorInsertRangeInputIter(benchmark::State& state)
 {
-        BM_M_ContainerEraseEmpty(c_vector)
+        BM_M_Container(c_vector, test_container_performance_insert_range_input_iter);
+}
+static void BM_VectorInsertRangeInputIterAtEnd(benchmark::State& state)
+{
+        BM_M_Container(c_vector, test_container_performance_insert_range_input_iter_at_end);
+}
+static void BM_VectorAssignLess(benchmark::State& state)
+{
+        BM_M_Container(c_vector, test_container_performance_assign_less);
+}
+static void BM_VectorAssignMore(benchmark::State& state)
+{
+        BM_M_Container(c_vector, test_container_performance_assign_more);
 }
 
 // Contiguous container
 using c_container = ecs::contiguous_container<dynamic_uninitialized_memory_buffer<ttype>>;
-static void BM_ContiguousContainerBaseline(benchmark::State& state)
+static void BM_CContBaseline(benchmark::State& state)
 {
-        BM_M_ContainerBaseline(c_container)
+        BM_M_Container(c_container, test_container_performance_baseline);
 }
-static void BM_ContiguousContainerEmplaceBack(benchmark::State& state)
+static void BM_CContEmplaceBack(benchmark::State& state)
 {
-        BM_M_ContainerEmplaceBack(c_container)
+        BM_M_Container(c_container, test_container_performance_emplace_back);
 }
-static void BM_ContiguousContainerErase(benchmark::State& state)
+static void BM_CContEraseOne(benchmark::State& state)
 {
-        BM_M_ContainerErase(c_container)
+        BM_M_Container(c_container, test_container_performance_erase_one);
 }
-static void BM_ContiguousContainerEmplace(benchmark::State& state)
+static void BM_CContEraseRange(benchmark::State& state)
 {
-        BM_M_ContainerEmplace(c_container)
+        BM_M_Container(c_container, test_container_performance_erase_range);
 }
-static void BM_ContiguousContainerInsert0(benchmark::State& state)
+static void BM_CContEraseEmptyRange(benchmark::State& state)
 {
-        BM_M_ContainerInsert0(c_container)
+        BM_M_Container(c_container, test_container_performance_erase_empty_range);
 }
-static void BM_ContiguousContainerInsert1(benchmark::State& state)
+static void BM_CContEmplace(benchmark::State& state)
 {
-        BM_M_ContainerInsert1(c_container)
+        BM_M_Container(c_container, test_container_performance_emplace);
 }
-static void BM_ContiguousContainerInsert2(benchmark::State& state)
+static void BM_CContInsertInitList(benchmark::State& state)
 {
-        BM_M_ContainerInsert2(c_container)
+        BM_M_Container(c_container, test_container_performance_insert_initlist);
 }
-static void BM_ContiguousContainerInsert3(benchmark::State& state)
+static void BM_CContInsertRange(benchmark::State& state)
 {
-        BM_M_ContainerInsert3(c_container)
+        BM_M_Container(c_container, test_container_performance_insert_range);
 }
-static void BM_ContiguousContainerEraseEmpty(benchmark::State& state)
+static void BM_CContInsertNAtEnd(benchmark::State& state)
 {
-        BM_M_ContainerEraseEmpty(c_container)
+        BM_M_Container(c_container, test_container_performance_insert_n_at_end);
+}
+static void BM_CContInsertNAtBegin(benchmark::State& state)
+{
+        BM_M_Container(c_container, test_container_performance_insert_n_at_begin);
+}
+static void BM_CContInsertRangeInputIter(benchmark::State& state)
+{
+        BM_M_Container(c_container, test_container_performance_insert_range_input_iter);
+}
+static void BM_CContInsertRangeInputIterAtEnd(benchmark::State& state)
+{
+        BM_M_Container(c_container, test_container_performance_insert_range_input_iter_at_end);
+}
+static void BM_CContAssignLess(benchmark::State& state)
+{
+        BM_M_Container(c_container, test_container_performance_assign_less);
+}
+static void BM_CContAssignMore(benchmark::State& state)
+{
+        BM_M_Container(c_container, test_container_performance_assign_more);
 }
 
 ////////////////
 BENCHMARK(BM_VectorBaseline);
 BENCHMARK(BM_VectorEmplaceBack);
-BENCHMARK(BM_VectorErase);
+BENCHMARK(BM_VectorEraseOne);
+BENCHMARK(BM_VectorEraseRange);
+BENCHMARK(BM_VectorEraseEmptyRange);
 BENCHMARK(BM_VectorEmplace);
-BENCHMARK(BM_VectorInsert0);
-BENCHMARK(BM_VectorInsert1);
-BENCHMARK(BM_VectorInsert2);
-BENCHMARK(BM_VectorInsert3);
-BENCHMARK(BM_VectorEraseEmpty);
+BENCHMARK(BM_VectorInsertInitList);
+BENCHMARK(BM_VectorInsertRange);
+BENCHMARK(BM_VectorInsertNAtEnd);
+BENCHMARK(BM_VectorInsertNAtBegin);
+BENCHMARK(BM_VectorInsertRangeInputIter);
+BENCHMARK(BM_VectorInsertRangeInputIterAtEnd);
+BENCHMARK(BM_VectorAssignLess);
+BENCHMARK(BM_VectorAssignMore);
 
-BENCHMARK(BM_ContiguousContainerBaseline);
-BENCHMARK(BM_ContiguousContainerEmplaceBack);
-BENCHMARK(BM_ContiguousContainerErase);
-BENCHMARK(BM_ContiguousContainerEmplace);
-BENCHMARK(BM_ContiguousContainerInsert0);
-BENCHMARK(BM_ContiguousContainerInsert1);
-BENCHMARK(BM_ContiguousContainerInsert2);
-BENCHMARK(BM_ContiguousContainerInsert3);
-BENCHMARK(BM_ContiguousContainerEraseEmpty);
+BENCHMARK(BM_CContBaseline);
+BENCHMARK(BM_CContEmplaceBack);
+BENCHMARK(BM_CContEraseOne);
+BENCHMARK(BM_CContEraseRange);
+BENCHMARK(BM_CContEraseEmptyRange);
+BENCHMARK(BM_CContEmplace);
+BENCHMARK(BM_CContInsertInitList);
+BENCHMARK(BM_CContInsertRange);
+BENCHMARK(BM_CContInsertNAtEnd);
+BENCHMARK(BM_CContInsertNAtBegin);
+BENCHMARK(BM_CContInsertRangeInputIter);
+BENCHMARK(BM_CContInsertRangeInputIterAtEnd);
+BENCHMARK(BM_CContAssignLess);
+BENCHMARK(BM_CContAssignMore);
 
 BENCHMARK_MAIN()

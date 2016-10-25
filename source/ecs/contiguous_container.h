@@ -394,8 +394,8 @@ private:
         {
                 auto index = position - begin();
 
-                for(iterator p{}; first != last; ++first)
-                        if(p = emplace(position, *first), p == end())
+                for(auto p = cast_iter(position); first != last; (void)++first, (void)++p)
+                        if(p = emplace(p, *first), p == end())
                                 return end();
 
                 return begin() + index;
