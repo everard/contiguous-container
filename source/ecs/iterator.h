@@ -63,17 +63,16 @@ struct identity_iterator
         {
                 return *this;
         }
-
-        constexpr identity_iterator& operator--() noexcept
-        {
-                return *this;
-        }
-
         constexpr identity_iterator operator++(int)
         {
                 return *this;
         }
 
+        //
+        constexpr identity_iterator& operator--() noexcept
+        {
+                return *this;
+        }
         constexpr identity_iterator operator--(int)
         {
                 return *this;
@@ -84,17 +83,16 @@ struct identity_iterator
         {
                 return *this;
         }
-
-        constexpr identity_iterator operator-(difference_type) const
-        {
-                return *this;
-        }
-
         constexpr identity_iterator& operator+=(difference_type) noexcept
         {
                 return *this;
         }
 
+        //
+        constexpr identity_iterator operator-(difference_type) const
+        {
+                return *this;
+        }
         constexpr identity_iterator& operator-=(difference_type) noexcept
         {
                 return *this;

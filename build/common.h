@@ -14,15 +14,6 @@ struct literal_storage
                 *location = T{std::forward<Args>(args)...};
         }
 
-        constexpr void destroy(T*) noexcept
-        {
-        }
-
-        static constexpr auto reallocate(std::size_t) noexcept
-        {
-                return false;
-        }
-
         constexpr T* begin() noexcept
         {
                 return storage_;
@@ -41,11 +32,6 @@ struct literal_storage
         constexpr auto& size() const noexcept
         {
                 return size_;
-        }
-
-        constexpr auto max_size() const noexcept
-        {
-                return N;
         }
 
         constexpr auto capacity() const noexcept
@@ -72,23 +58,6 @@ struct uninitialized_memory_buffer
                 }
         }
 
-        template <typename... Args>
-        void construct(T* location, Args&&... args)
-        {
-                ::new(location) T{std::forward<Args>(args)...};
-        }
-
-        void destroy(T* location) noexcept
-        {
-                if /*constexpr*/ (!std::is_trivially_destructible<T>::value)
-                        location->~T();
-        }
-
-        static constexpr auto reallocate(std::size_t) noexcept
-        {
-                return false;
-        }
-
         T* begin() noexcept
         {
                 return reinterpret_cast<T*>(storage_);
@@ -109,11 +78,6 @@ struct uninitialized_memory_buffer
                 return size_;
         }
 
-        constexpr auto max_size() const noexcept
-        {
-                return N;
-        }
-
         constexpr auto capacity() const noexcept
         {
                 return N;
@@ -128,6 +92,7 @@ template <typename T>
 struct dynamic_uninitialized_memory_buffer
 {
         using value_type = T;
+        using traits = ecs::storage_traits<dynamic_uninitialized_memory_buffer<value_type>>;
 
         ~dynamic_uninitialized_memory_buffer()
         {
@@ -138,21 +103,9 @@ struct dynamic_uninitialized_memory_buffer
                 }
         }
 
-        template <typename... Args>
-        void construct(T* location, Args&&... args)
-        {
-                ::new(location) T{std::forward<Args>(args)...};
-        }
-
-        void destroy(T* location) noexcept
-        {
-                if /*constexpr*/ (!std::is_trivially_destructible<T>::value)
-                        location->~T();
-        }
-
         bool reallocate(std::size_t n)
         {
-                if(n > max_size() || n < capacity())
+                if(n > traits::max_size(*this) || n < capacity())
                         return false;
 
                 if(size_ == 0)
@@ -164,7 +117,9 @@ struct dynamic_uninitialized_memory_buffer
                 }
 
                 auto capacity = std::max(size_ + size_, n);
-                capacity = (capacity < size_ || capacity > max_size()) ? max_size() : capacity;
+                capacity = (capacity < size_ || capacity > traits::max_size(*this))
+                                   ? traits::max_size(*this)
+                                   : capacity;
 
                 auto ptr = std::make_unique<unsigned char[]>(capacity * sizeof(T));
                 auto first = reinterpret_cast<T *>(ptr.get()), last = first;
@@ -172,15 +127,17 @@ struct dynamic_uninitialized_memory_buffer
                 try
                 {
                         ecs::for_each_iter(begin(), begin() + size(), first, [&](auto i, auto j) {
-                                this->construct(j, std::move_if_noexcept(*i)), ++last;
+                                traits::construct(*this, j, std::move_if_noexcept(*i)), ++last;
                         });
                 }
                 catch(...)
                 {
-                        ecs::for_each_iter(first, last, [&](auto i) { this->destroy(i); });
+                        ecs::for_each_iter(
+                                first, last, [this](auto i) { traits::destroy(*this, i); });
                 }
 
-                ecs::for_each_iter(begin(), begin() + size(), [&](auto i) { this->destroy(i); });
+                ecs::for_each_iter(
+                        begin(), begin() + size(), [this](auto i) { traits::destroy(*this, i); });
                 std::swap(storage_, ptr);
                 capacity_ = capacity;
 
@@ -205,11 +162,6 @@ struct dynamic_uninitialized_memory_buffer
         constexpr auto& size() const noexcept
         {
                 return size_;
-        }
-
-        constexpr auto max_size() const noexcept
-        {
-                return static_cast<std::size_t>(std::numeric_limits<std::ptrdiff_t>::max());
         }
 
         constexpr auto capacity() const noexcept

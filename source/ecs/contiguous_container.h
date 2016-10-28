@@ -28,18 +28,18 @@ struct contiguous_container : Storage
         // types:
         //
         using traits = ecs::storage_traits<Storage>;
-        using value_type = typename Storage::value_type;
+        using value_type = typename traits::value_type;
 
         //
-        using pointer = value_type*;
-        using const_pointer = const value_type*;
+        using pointer = typename traits::pointer;
+        using const_pointer = typename traits::const_pointer;
 
         using reference = value_type&;
         using const_reference = const value_type&;
 
         //
-        using size_type = std::size_t;
-        using difference_type = std::ptrdiff_t;
+        using size_type = typename traits::size_type;
+        using difference_type = typename traits::difference_type;
 
         //
         using iterator = pointer;
@@ -233,14 +233,14 @@ struct contiguous_container : Storage
         }
 
         //
-        constexpr pointer data() noexcept
+        constexpr value_type* data() noexcept
         {
-                return begin();
+                return traits::ptr_cast(traits::begin(*this));
         }
 
-        constexpr const_pointer data() const noexcept
+        constexpr const value_type* data() const noexcept
         {
-                return begin();
+                return traits::ptr_cast(traits::begin(*this));
         }
 
         // modifiers:
@@ -279,7 +279,7 @@ struct contiguous_container : Storage
                         return emplace_back(std::forward<Args>(args)...);
 
                 value_type x{std::forward<Args>(args)...};
-                return insert_n(cast_iter(position), 1, std::make_move_iterator(&x));
+                return insert_n(iter_cast(position), 1, std::make_move_iterator(&x));
         }
 
         constexpr iterator insert(const_iterator position, const_reference x)
@@ -307,18 +307,19 @@ struct contiguous_container : Storage
 
         constexpr iterator insert(const_iterator position, size_type n, const_reference x)
         {
-                return insert_n(cast_iter(position), n, make_identity_iterator(&x));
+                return insert_n(iter_cast(position), static_cast<difference_type>(n),
+                                make_identity_iterator(&x));
         }
 
         //
         constexpr iterator erase(const_iterator position)
         {
-                return erase_n(cast_iter(position));
+                return erase_n(iter_cast(position));
         }
 
         constexpr iterator erase(const_iterator first, const_iterator last)
         {
-                return erase_n(cast_iter(first), last - first);
+                return erase_n(iter_cast(first), last - first);
         }
 
         //
@@ -368,22 +369,24 @@ private:
                 if(n > capacity() && !traits::reallocate(*this, n))
                         return false;
 
+                auto d = static_cast<difference_type>(n);
                 if(n <= size())
                 {
                         destroy_range(std::copy_n(first, n, begin()), end());
+                        traits::size(*this) = n;
                 }
                 else
                 {
-                        auto mid = std::next(first, size());
+                        auto mid = first;
+                        std::advance(mid, size());
 
                         for_each_iter(
-                                std::copy(first, mid, begin()), begin() + n, [this, &mid](auto i) {
+                                std::copy(first, mid, begin()), begin() + d, [this, &mid](auto i) {
                                         traits::construct(*this, i, *mid),
                                                 (void)++traits::size(*this), (void)++mid;
                                 });
                 }
 
-                traits::size(*this) = n;
                 return true;
         }
 
@@ -394,7 +397,7 @@ private:
         {
                 auto index = position - begin();
 
-                for(auto p = cast_iter(position); first != last; (void)++first, (void)++p)
+                for(auto p = iter_cast(position); first != last; (void)++first, (void)++p)
                         if(p = emplace(p, *first), p == end())
                                 return end();
 
@@ -405,18 +408,18 @@ private:
         constexpr iterator insert(const_iterator position, ForwardIterator first,
                                   ForwardIterator last, std::forward_iterator_tag)
         {
-                auto n = static_cast<size_type>(std::distance(first, last));
-                return insert_n(cast_iter(position), n, first);
+                return insert_n(iter_cast(position),
+                                static_cast<difference_type>(std::distance(first, last)), first);
         }
 
         template <typename ForwardIterator>
-        constexpr iterator insert_n(iterator position, size_type n, ForwardIterator first)
+        constexpr iterator insert_n(iterator position, difference_type n, ForwardIterator first)
         {
                 if(n == 0)
                         return position;
 
-                auto sz = n + size();
-                if(sz > capacity() || sz < n)
+                auto sz = static_cast<size_type>(n) + size();
+                if(sz > capacity() || sz < size())
                 {
                         auto index = position - begin();
                         if(!traits::reallocate(*this, sz))
@@ -426,15 +429,19 @@ private:
                 }
 
                 // relocate elements
-                auto m = std::min(n, static_cast<size_type>(end() - position));
+                auto m = std::min(n, end() - position);
                 auto last = end(), first_to_relocate = last - m, first_to_construct = position + m;
 
                 if(m != n)
-                        for_each_iter(first_to_construct, position + n, std::next(first, m),
-                                      [this](auto i, auto j) {
-                                              traits::construct(*this, i, *j),
-                                                      (void)++traits::size(*this);
-                                      });
+                {
+                        auto mid = first;
+                        std::advance(mid, m);
+
+                        for_each_iter(first_to_construct, position + n, [this, &mid](auto i) {
+                                traits::construct(*this, i, *mid), (void)++traits::size(*this),
+                                        (void)++mid;
+                        });
+                }
 
                 for_each_iter(first_to_relocate, last, first_to_relocate + n, [this](auto i,
                                                                                      auto j) {
@@ -465,7 +472,7 @@ private:
                 for_each_iter(first, last, [&](auto i) { traits::destroy(*this, i); });
         }
 
-        constexpr iterator cast_iter(const_iterator position) noexcept
+        constexpr iterator iter_cast(const_iterator position) noexcept
         {
                 return begin() + (position - cbegin());
         }
