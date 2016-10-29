@@ -6,14 +6,10 @@
 #define CONTIGUOUS_CONTAINER_H
 
 #include <initializer_list>
-
 #include <stdexcept>
 #include <cassert>
-#include <memory>
 
 #include "storage_traits.h"
-#include "algorithm.h"
-#include "iterator.h"
 
 namespace ecs
 {
