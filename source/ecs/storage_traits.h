@@ -154,7 +154,7 @@ struct storage_traits
         static constexpr detail::absent_exact<pointer, detail::end_function, T> end(
                 storage_type& storage) noexcept
         {
-                return storage_traits::begin(storage) + static_cast<size_type>(storage.size());
+                return begin(storage) + static_cast<difference_type>(storage.size());
         }
 
         template <typename T = const storage_type>
@@ -167,7 +167,7 @@ struct storage_traits
         static constexpr detail::absent_exact<const_pointer, detail::end_function, T> end(
                 const storage_type& storage) noexcept
         {
-                return storage_traits::begin(storage) + static_cast<size_type>(storage.size());
+                return begin(storage) + static_cast<difference_type>(storage.size());
         }
 
         // capacity:
@@ -209,7 +209,7 @@ struct storage_traits
         static constexpr detail::absent_exact<bool, detail::full_function, T> full(
                 const storage_type& storage) noexcept
         {
-                return static_cast<size_type>(storage.size()) == storage_traits::capacity(storage);
+                return static_cast<size_type>(storage.size()) == capacity(storage);
         }
 
         //
@@ -228,18 +228,20 @@ struct storage_traits
         static constexpr detail::exists_exact<size_type, detail::max_size_function, T> max_size(
                 const storage_type& storage) noexcept
         {
-                return static_cast<size_type>(storage.max_size());
+                return storage.max_size();
         }
         template <typename T = const storage_type>
         static constexpr detail::absent_exact<size_type, detail::max_size_function, T> max_size(
                 const storage_type&) noexcept
         {
-                return std::numeric_limits<size_type>::max() / sizeof(value_type);
+                return static_cast<size_type>(
+                        static_cast<size_type>(std::numeric_limits<difference_type>::max()) /
+                        sizeof(value_type));
         }
 
         static constexpr size_type capacity(const storage_type& storage) noexcept
         {
-                return static_cast<size_type>(storage.capacity());
+                return storage.capacity();
         }
 
         // swap:

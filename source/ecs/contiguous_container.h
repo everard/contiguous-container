@@ -69,7 +69,7 @@ struct contiguous_container : Storage
 
         constexpr bool assign(size_type n, const_reference u)
         {
-                return assign_n(n, make_identity_iterator(&u));
+                return assign_n(n, make_identity_iterator(std::addressof(u)));
         }
 
         // iterators:
@@ -275,7 +275,7 @@ struct contiguous_container : Storage
                         return emplace_back(std::forward<Args>(args)...);
 
                 value_type x{std::forward<Args>(args)...};
-                return insert_n(iter_cast(position), 1, std::make_move_iterator(&x));
+                return insert_n(iter_cast(position), 1, std::make_move_iterator(std::addressof(x)));
         }
 
         constexpr iterator insert(const_iterator position, const_reference x)
@@ -304,7 +304,7 @@ struct contiguous_container : Storage
         constexpr iterator insert(const_iterator position, size_type n, const_reference x)
         {
                 return insert_n(iter_cast(position), static_cast<difference_type>(n),
-                                make_identity_iterator(&x));
+                                make_identity_iterator(std::addressof(x)));
         }
 
         //
