@@ -178,11 +178,13 @@ struct contiguous_container : Storage
         //
         constexpr reference operator[](size_type i) noexcept
         {
+                assert(i < size());
                 return data()[i];
         }
 
         constexpr const_reference operator[](size_type i) const noexcept
         {
+                assert(i < size());
                 return data()[i];
         }
 
