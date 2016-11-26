@@ -6,6 +6,8 @@
 #define CONTIGUOUS_CONTAINER_H
 
 #include <initializer_list>
+#include <functional>
+
 #include <stdexcept>
 #include <cassert>
 
@@ -273,6 +275,8 @@ struct contiguous_container : Storage
         template <typename... Args>
         constexpr iterator emplace(const_iterator position, Args&&... args)
         {
+                assert(iter_check(position));
+
                 if(position == end())
                         return emplace_back(std::forward<Args>(args)...);
 
@@ -294,6 +298,7 @@ struct contiguous_container : Storage
         template <typename InputIterator, typename = check_input_iterator<InputIterator>>
         constexpr iterator insert(const_iterator position, InputIterator first, InputIterator last)
         {
+                assert(iter_check(position));
                 return insert(position, first, last,
                               typename std::iterator_traits<InputIterator>::iterator_category{});
         }
@@ -305,6 +310,7 @@ struct contiguous_container : Storage
 
         constexpr iterator insert(const_iterator position, size_type n, const_reference x)
         {
+                assert(iter_check(position));
                 return insert_n(iter_cast(position), static_cast<difference_type>(n),
                                 make_identity_iterator(std::addressof(x)));
         }
@@ -312,11 +318,13 @@ struct contiguous_container : Storage
         //
         constexpr iterator erase(const_iterator position)
         {
+                assert(iter_check(position));
                 return erase_n(iter_cast(position));
         }
 
         constexpr iterator erase(const_iterator first, const_iterator last)
         {
+                assert(iter_check(first) && iter_check(last));
                 return erase_n(iter_cast(first), last - first);
         }
 
@@ -473,6 +481,12 @@ private:
         constexpr iterator iter_cast(const_iterator position) noexcept
         {
                 return begin() + (position - cbegin());
+        }
+
+        constexpr bool iter_check(const_iterator position) noexcept
+        {
+                using compare = std::less_equal<const_iterator>;
+                return compare{}(begin(), position) && compare{}(position, end());
         }
 };
 

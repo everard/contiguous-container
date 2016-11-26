@@ -13,6 +13,7 @@ link_directories(/home/everard/Software/benchmark/src)
 add_executable(${PROJECT_NAME} ${SRC_LIST} ${SOURCES0} ${SOURCES1})
 
 set(CMAKE_CXX_FLAGS_DEBUG "-g")
+set(CMAKE_CXX_FLAGS_RELEASE "-DNDEBUG")
 file(STRINGS build/flags ADDITIONAL_FLAGS)
 target_compile_options(${PROJECT_NAME} PUBLIC ${ADDITIONAL_FLAGS})
 target_link_libraries(${PROJECT_NAME} pthread benchmark)
