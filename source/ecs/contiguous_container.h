@@ -318,13 +318,15 @@ struct contiguous_container : Storage
         //
         constexpr iterator erase(const_iterator position)
         {
-                assert(iter_check(position));
+                assert(iter_check(position) &&
+                       std::not_equal_to<const_iterator>{}(position, end()));
                 return erase_n(iter_cast(position));
         }
 
         constexpr iterator erase(const_iterator first, const_iterator last)
         {
-                assert(iter_check(first) && iter_check(last));
+                assert(iter_check(first) && iter_check(last) &&
+                       std::less_equal<const_iterator>{}(first, last));
                 return erase_n(iter_cast(first), last - first);
         }
 

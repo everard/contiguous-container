@@ -1,2 +1,2 @@
-#include "benchmarks.h"
-//#include "tests.h"
+//#include "benchmarks.h"
+#include "tests.h"
