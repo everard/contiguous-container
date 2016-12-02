@@ -24,12 +24,12 @@ struct literal_storage
                 return storage_;
         }
 
-        constexpr auto& size() noexcept
+        constexpr void set_size(std::size_t n) noexcept
         {
-                return size_;
+                size_ = n;
         }
 
-        constexpr auto& size() const noexcept
+        constexpr auto size() const noexcept
         {
                 return size_;
         }
@@ -68,12 +68,12 @@ struct uninitialized_memory_buffer
                 return reinterpret_cast<const T*>(storage_);
         }
 
-        constexpr auto& size() noexcept
+        constexpr void set_size(std::size_t n) noexcept
         {
-                return size_;
+                size_ = n;
         }
 
-        constexpr auto& size() const noexcept
+        constexpr auto size() const noexcept
         {
                 return size_;
         }
@@ -154,12 +154,12 @@ struct dynamic_uninitialized_memory_buffer
                 return reinterpret_cast<const T*>(storage_.get());
         }
 
-        constexpr auto& size() noexcept
+        constexpr void set_size(std::size_t n) noexcept
         {
-                return size_;
+                size_ = n;
         }
 
-        constexpr auto& size() const noexcept
+        constexpr auto size() const noexcept
         {
                 return size_;
         }

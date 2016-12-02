@@ -154,7 +154,7 @@ struct contiguous_container : Storage
         //
         constexpr size_type size() const noexcept
         {
-                return static_cast<size_type>(traits::size(*this));
+                return traits::size(*this);
         }
 
         constexpr size_type max_size() const noexcept
@@ -252,7 +252,7 @@ struct contiguous_container : Storage
                         return end();
 
                 auto position = traits::construct(*this, end(), std::forward<Args>(args)...);
-                return (void)++traits::size(*this), position;
+                return traits::inc_size(*this), position;
         }
 
         constexpr iterator push_back(const_reference x)
@@ -268,7 +268,7 @@ struct contiguous_container : Storage
         constexpr void pop_back() noexcept
         {
                 assert(!empty());
-                (void)--traits::size(*this), traits::destroy(*this, end());
+                traits::dec_size(*this), traits::destroy(*this, end());
         }
 
         //
@@ -332,7 +332,7 @@ struct contiguous_container : Storage
         constexpr void clear() noexcept
         {
                 destroy_range(begin(), end());
-                traits::size(*this) = 0;
+                traits::set_size(*this, 0);
         }
 
         constexpr void swap(contiguous_container& x) noexcept(noexcept(traits::swap(x, x)))
@@ -350,7 +350,7 @@ private:
 
                 if(first == last)
                 {
-                        traits::size(*this) -= static_cast<size_type>(sentinel - assigned);
+                        traits::dec_size(*this, static_cast<size_type>(sentinel - assigned));
                         destroy_range(assigned, sentinel);
                         return true;
                 }
@@ -379,7 +379,7 @@ private:
                 if(n <= size())
                 {
                         destroy_range(std::copy_n(first, n, begin()), end());
-                        traits::size(*this) = n;
+                        traits::set_size(*this, n);
                 }
                 else
                 {
@@ -388,8 +388,8 @@ private:
 
                         for_each_iter(
                                 std::copy(first, mid, begin()), begin() + d, [this, &mid](auto i) {
-                                        traits::construct(*this, i, *mid),
-                                                (void)++traits::size(*this), (void)++mid;
+                                        traits::construct(*this, i, *mid), traits::inc_size(*this),
+                                                (void)++mid;
                                 });
                 }
 
@@ -444,15 +444,15 @@ private:
                         std::advance(mid, m);
 
                         for_each_iter(first_to_construct, position + n, [this, &mid](auto i) {
-                                traits::construct(*this, i, *mid), (void)++traits::size(*this),
+                                traits::construct(*this, i, *mid), traits::inc_size(*this),
                                         (void)++mid;
                         });
                 }
 
-                for_each_iter(first_to_relocate, last, first_to_relocate + n, [this](auto i,
-                                                                                     auto j) {
-                        traits::construct(*this, j, std::move(*i)), (void)++traits::size(*this);
-                });
+                for_each_iter(
+                        first_to_relocate, last, first_to_relocate + n, [this](auto i, auto j) {
+                                traits::construct(*this, j, std::move(*i)), traits::inc_size(*this);
+                        });
 
                 std::move_backward(position, first_to_relocate, last);
                 for_each_iter(position, first_to_construct, first, [](auto i, auto j) { *i = *j; });
@@ -466,7 +466,7 @@ private:
                 if(n != 0)
                 {
                         destroy_range(std::move(position + n, end(), position), end());
-                        traits::size(*this) -= static_cast<size_type>(n);
+                        traits::dec_size(*this, static_cast<size_type>(n));
                 }
 
                 return position;

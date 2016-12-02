@@ -66,6 +66,12 @@ template <typename T>
 using empty_function = decltype(std::declval<T>().empty());
 template <typename T>
 using full_function = decltype(std::declval<T>().full());
+
+template <typename T>
+using inc_size_function = decltype(std::declval<T>().inc_size(std::declval<size_type<T>>()));
+template <typename T>
+using dec_size_function = decltype(std::declval<T>().dec_size(std::declval<size_type<T>>()));
+
 template <typename T>
 using max_size_function = decltype(std::declval<T>().max_size());
 template <typename T>
@@ -196,7 +202,7 @@ struct storage_traits
         static constexpr detail::absent_exact<bool, detail::empty_function, T> empty(
                 const storage_type& storage) noexcept
         {
-                return static_cast<size_type>(storage.size()) == 0;
+                return storage.size() == 0;
         }
 
         template <typename T = const storage_type>
@@ -209,21 +215,47 @@ struct storage_traits
         static constexpr detail::absent_exact<bool, detail::full_function, T> full(
                 const storage_type& storage) noexcept
         {
-                return static_cast<size_type>(storage.size()) == capacity(storage);
+                return storage.size() == storage.capacity();
         }
 
         //
-        static constexpr auto& size(storage_type& storage) noexcept
+        static constexpr void set_size(storage_type& storage, size_type n) noexcept
+        {
+                storage.set_size(n);
+        }
+
+        template <typename T = storage_type>
+        static constexpr detail::exists<void, detail::inc_size_function, T> inc_size(
+                storage_type& storage, size_type n = 1) noexcept
+        {
+                storage.inc_size(n);
+        }
+        template <typename T = storage_type>
+        static constexpr detail::absent<void, detail::inc_size_function, T> inc_size(
+                storage_type& storage, size_type n = 1) noexcept
+        {
+                storage.set_size(storage.size() + n);
+        }
+
+        template <typename T = storage_type>
+        static constexpr detail::exists<void, detail::dec_size_function, T> dec_size(
+                storage_type& storage, size_type n = 1) noexcept
+        {
+                storage.dec_size(n);
+        }
+        template <typename T = storage_type>
+        static constexpr detail::absent<void, detail::dec_size_function, T> dec_size(
+                storage_type& storage, size_type n = 1) noexcept
+        {
+                storage.set_size(storage.size() - n);
+        }
+
+        //
+        static constexpr size_type size(const storage_type& storage) noexcept
         {
                 return storage.size();
         }
 
-        static constexpr auto& size(const storage_type& storage) noexcept
-        {
-                return storage.size();
-        }
-
-        //
         template <typename T = const storage_type>
         static constexpr detail::exists_exact<size_type, detail::max_size_function, T> max_size(
                 const storage_type& storage) noexcept
