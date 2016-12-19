@@ -1,7 +1,7 @@
 #ifndef COMMON_H
 #define COMMON_H
 
-#include "../source/ecs/contiguous_container.h"
+#include "../source/ecs/containers.h"
 
 template <typename T, std::size_t N>
 struct literal_storage

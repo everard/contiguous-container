@@ -211,12 +211,12 @@ void test_container(Container& arr)
         else
                 std::cout << "next element: " << next->x << '\n' << std::endl;
 
-
         std::cout << "\ncreate array a2={301, 302, 303, 304}\n";
         int a2[] = {301, 302, 303, 304};
 
         std::cout << "\ninsert elements of a2 before the last element\n";
-        next = arr.insert(arr.end() - 1, make_input_iterator(std::begin(a2)), make_input_iterator(std::end(a2)));
+        next = arr.insert(arr.end() - 1, make_input_iterator(std::begin(a2)),
+                          make_input_iterator(std::end(a2)));
         print_container(arr);
         if(next == arr.end())
                 std::cout << "next element is arr.end()" << std::endl;
@@ -252,6 +252,9 @@ void test_container(Container& arr)
         std::cout << '\n';
 }
 
+template <typename T, typename Allocator = std::allocator<T>>
+using aa_storage = ecs::allocator_aware_storage<ecs::vector_storage<T, Allocator>>;
+
 int main()
 {
         std::cout
@@ -267,5 +270,60 @@ int main()
                 arr.reserve(64);
                 test_container(arr);
         }
+
+        ecs::vector<some_type> v;
+        static_assert(std::is_same<std::allocator_traits<std::allocator<some_type>>::const_pointer,
+                                   const some_type*>::value);
+
+        static_assert(std::is_same<ecs::storage_traits<aa_storage<some_type>>::const_pointer,
+                                   const some_type*>::value);
+
+        static_assert(ecs::storage_traits<aa_storage<some_type>>::construct_exists);
+        static_assert(ecs::storage_traits<aa_storage<some_type>>::destroy_exists);
+
+        static_assert(ecs::storage_traits<aa_storage<some_type>>::end_exists);
+        static_assert(ecs::storage_traits<aa_storage<some_type>>::end_const_exists);
+
+        static_assert(ecs::storage_traits<aa_storage<some_type>>::reallocate_exists);
+        static_assert(ecs::storage_traits<aa_storage<some_type>>::empty_exists);
+        static_assert(ecs::storage_traits<aa_storage<some_type>>::full_exists);
+
+        static_assert(ecs::storage_traits<aa_storage<some_type>>::inc_size_exists);
+        static_assert(ecs::storage_traits<aa_storage<some_type>>::dec_size_exists);
+        static_assert(ecs::storage_traits<aa_storage<some_type>>::max_size_exists);
+
+        std::cout << "construct exists: "
+                  << ecs::storage_traits<aa_storage<some_type>>::construct_exists << '\n';
+        std::cout << "destroy exists: "
+                  << ecs::storage_traits<aa_storage<some_type>>::destroy_exists << '\n';
+
+        std::cout << "end exists: " << ecs::storage_traits<aa_storage<some_type>>::end_exists
+                  << '\n';
+        std::cout << "end const exists: "
+                  << ecs::storage_traits<aa_storage<some_type>>::end_const_exists << '\n';
+
+        std::cout << "reallocate exists: "
+                  << ecs::storage_traits<aa_storage<some_type>>::reallocate_exists << '\n';
+        std::cout << "empty exists: " << ecs::storage_traits<aa_storage<some_type>>::empty_exists
+                  << '\n';
+        std::cout << "full exists: " << ecs::storage_traits<aa_storage<some_type>>::full_exists
+                  << '\n';
+
+        std::cout << "inc_size exists: "
+                  << ecs::storage_traits<aa_storage<some_type>>::inc_size_exists << '\n';
+        std::cout << "dec_size exists: "
+                  << ecs::storage_traits<aa_storage<some_type>>::dec_size_exists << '\n';
+
+        std::cout << "max_size exists: "
+                  << ecs::storage_traits<aa_storage<some_type>>::max_size_exists << '\n';
+        std::cout << "swap exists: " << ecs::storage_traits<aa_storage<some_type>>::swap_exists
+                  << '\n';
+
+        v.emplace_back(3);
+        v.emplace_back(4);
+
+        print_container(v);
+        std::cout << v.size() << '\n';
+
         return 0;
 }

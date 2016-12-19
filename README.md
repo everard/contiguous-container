@@ -1,5 +1,7 @@
+This repository contains implementation of the R1D1 version of [contiguous_container](https://everard.github.io/contiguous_container).
 
-This repository contains implementation of a contiguous container. This container satisfies most of the requirements of a container and of a reversible container
-(given in two tables in 23.2 of the Standard), of a sequence container, including most of the optional sequence container requirements (23.2.3 of the Standard).
-In order for it to fully satisfy a container and allocator-aware container requirements, specified template argument should provide needed constructors (see 23.2 of the Standard).
-
+Header containers.h (work in progress) shall implement some common container types using contiguous_container:
+ - (TODO) inplace_vector - satisfies sequence container requirements, uses embedded storage for N elements, capacity can't change over time;
+ - (TODO) small_vector - fully satisfies allocator-aware container requirements, uses embedded storage for N elements, and when
+    capacity is exhausted, uses allocator to obtain more memory;
+ - vector (almost ready) - normal vector, almost the same as std::vector.
