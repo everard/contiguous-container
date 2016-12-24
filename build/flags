@@ -23,4 +23,4 @@
 -pedantic
 -Wfatal-errors
 -march=native
--O2
+-O0

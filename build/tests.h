@@ -52,7 +52,7 @@ struct some_type
                 std::cout << "copy constructing some type from " << x << std::endl;
         }
 
-        some_type(some_type&& other) : x{other.x}
+        some_type(some_type&& other) noexcept : x{other.x}
         {
                 std::cout << "move constructing some type from " << x << std::endl;
         }
@@ -70,7 +70,7 @@ struct some_type
                 return *this;
         }
 
-        some_type& operator=(some_type&& rhs)
+        some_type& operator=(some_type&& rhs) noexcept
         {
                 std::cout << "moving some type from " << rhs.x << " to " << x << std::endl;
                 x = rhs.x;
@@ -257,6 +257,7 @@ using aa_storage = ecs::allocator_aware_storage<ecs::vector_storage<T, Allocator
 
 int main()
 {
+        /*
         std::cout
                 << "\n--------------------------------------------------\nTESTING BOUNDED_ARRAY\n";
         {
@@ -270,8 +271,8 @@ int main()
                 arr.reserve(64);
                 test_container(arr);
         }
+        */
 
-        ecs::vector<some_type> v;
         static_assert(std::is_same<std::allocator_traits<std::allocator<some_type>>::const_pointer,
                                    const some_type*>::value);
 
@@ -319,11 +320,25 @@ int main()
         std::cout << "swap exists: " << ecs::storage_traits<aa_storage<some_type>>::swap_exists
                   << '\n';
 
+        ecs::vector<some_type> v{4, 5};
+        //std::vector<int> v(4, 5);
         v.emplace_back(3);
         v.emplace_back(4);
 
         print_container(v);
-        std::cout << v.size() << '\n';
+
+        //
+        ecs::vector<some_type> lv{v};
+        print_container(lv);
+        lv.emplace_back(7);
+        lv.emplace_back(8);
+        lv.emplace_back(9);
+        print_container(lv);
+
+        //
+        v = std::move(lv);
+        print_container(v);
+        print_container(lv);
 
         return 0;
 }

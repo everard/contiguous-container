@@ -5,11 +5,10 @@
 #ifndef STORAGE_TRAITS_H
 #define STORAGE_TRAITS_H
 
-#include <type_traits>
+#include "utility.h"
+
 #include <limits>
 #include <memory>
-
-#include "utility.h"
 
 namespace ecs
 {

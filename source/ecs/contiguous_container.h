@@ -18,11 +18,6 @@ namespace ecs
 template <typename Storage>
 struct contiguous_container : Storage
 {
-        // requirements:
-        //
-        template <typename InputIterator>
-        using check_input_iterator = std::enable_if_t<!std::is_integral<InputIterator>::value>;
-
         // types:
         //
         using traits = ecs::storage_traits<Storage>;
@@ -477,7 +472,7 @@ private:
         //
         constexpr void destroy_range(iterator first, iterator last) noexcept
         {
-                for_each_iter(first, last, [&](auto i) { traits::destroy(*this, i); });
+                for_each_iter(first, last, [this](auto i) { traits::destroy(*this, i); });
         }
 
         constexpr iterator iter_cast(const_iterator position) noexcept

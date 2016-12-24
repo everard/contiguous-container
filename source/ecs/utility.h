@@ -6,8 +6,11 @@
 #define UTILITY_H
 
 #include <experimental/tuple>
+#include <type_traits>
+
 #include <algorithm>
 #include <iterator>
+
 #include <cstddef>
 #include <utility>
 
@@ -100,6 +103,10 @@ constexpr identity_iterator<Iterator> make_identity_iterator(Iterator i)
 {
         return identity_iterator<Iterator>{i};
 }
+
+// input iterator concept check:
+template <typename InputIterator>
+using check_input_iterator = std::enable_if_t<!std::is_integral<InputIterator>::value>;
 
 //
 } // namespace ecs
