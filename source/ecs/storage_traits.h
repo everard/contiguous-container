@@ -134,6 +134,12 @@ struct storage_traits
                 meta::template exists_exact<bool, reallocate_trait, storage_type>;
 
         template <typename S>
+        using reallocate_assign_trait = decltype(std::declval<S>().reallocate_assign(
+                std::declval<size_type>(), std::declval<value_type*>()));
+        static constexpr bool reallocate_assign_exists =
+                meta::template exists_exact<bool, reallocate_assign_trait, storage_type>;
+
+        template <typename S>
         using empty_trait = decltype(std::declval<S>().empty());
         static constexpr bool empty_exists =
                 meta::template exists_exact<bool, empty_trait, storage_type>;
@@ -251,6 +257,27 @@ struct storage_traits
         }
 
         //
+        template <bool E = reallocate_assign_exists, std::enable_if_t<E, int> = 0,
+                  typename ForwardIterator>
+        static constexpr bool reallocate_assign(storage_type& storage, size_type n,
+                                                ForwardIterator first)
+        {
+                return storage.reallocate_assign(n, first);
+        }
+
+        template <bool E = reallocate_assign_exists, std::enable_if_t<!E, int> = 0,
+                  typename ForwardIterator>
+        static constexpr bool reallocate_assign(storage_type& storage, size_type n,
+                                                ForwardIterator first)
+        {
+                if(!reallocate(storage, n))
+                        return false;
+
+                assign(storage, n, first);
+                return true;
+        }
+
+        //
         template <bool E = empty_exists, std::enable_if_t<E, int> = 0>
         static constexpr bool empty(const storage_type& storage) noexcept
         {
@@ -362,6 +389,31 @@ struct storage_traits
         static constexpr auto ptr_cast(T ptr) noexcept -> decltype(std::addressof(*ptr))
         {
                 return ptr ? std::addressof(*ptr) : nullptr;
+        }
+
+        // assignment:
+        //
+        template <typename ForwardIterator>
+        static constexpr void assign(storage_type& storage, size_type n, ForwardIterator first)
+        {
+                if(n > size(storage))
+                {
+                        auto target = begin(storage), mid = end(storage);
+                        auto sentinel = target + static_cast<difference_type>(n);
+
+                        std::tie(target, first) =
+                                for_each_iter(target, mid, first, [](auto i, auto j) { *i = *j; });
+
+                        for_each_iter(target, sentinel, first, [&storage](auto i, auto j) {
+                                (void)construct(storage, i, *j), inc_size(storage);
+                        });
+                }
+                else
+                {
+                        for_each_iter(std::copy_n(first, n, begin(storage)), end(storage),
+                                      [&storage](auto i) { destroy(storage, i); });
+                        set_size(storage, n);
+                }
         }
 };
 

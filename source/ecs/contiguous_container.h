@@ -369,27 +369,10 @@ private:
         template <typename ForwardIterator>
         constexpr bool assign_n(size_type n, ForwardIterator first)
         {
-                if(n > capacity() && !traits::reallocate(*this, n))
-                        return false;
+                if(n > capacity())
+                        return traits::reallocate_assign(*this, n, first);
 
-                auto d = static_cast<difference_type>(n);
-                if(n <= size())
-                {
-                        destroy_range(std::copy_n(first, n, begin()), end());
-                        traits::set_size(*this, n);
-                }
-                else
-                {
-                        auto mid = first;
-                        std::advance(mid, size());
-
-                        for_each_iter(
-                                std::copy(first, mid, begin()), begin() + d, [this, &mid](auto i) {
-                                        traits::construct(*this, i, *mid), traits::inc_size(*this),
-                                                (void)++mid;
-                                });
-                }
-
+                traits::assign(*this, n, first);
                 return true;
         }
 

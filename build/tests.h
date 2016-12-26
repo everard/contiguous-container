@@ -257,7 +257,7 @@ using aa_storage = ecs::allocator_aware_storage<ecs::vector_storage<T, Allocator
 
 int main()
 {
-        /*
+
         std::cout
                 << "\n--------------------------------------------------\nTESTING BOUNDED_ARRAY\n";
         {
@@ -271,7 +271,7 @@ int main()
                 arr.reserve(64);
                 test_container(arr);
         }
-        */
+
 
         static_assert(std::is_same<std::allocator_traits<std::allocator<some_type>>::const_pointer,
                                    const some_type*>::value);
@@ -305,6 +305,9 @@ int main()
 
         std::cout << "reallocate exists: "
                   << ecs::storage_traits<aa_storage<some_type>>::reallocate_exists << '\n';
+        std::cout << "reallocate_fill exists: "
+                  << ecs::storage_traits<aa_storage<some_type>>::reallocate_assign_exists << '\n';
+
         std::cout << "empty exists: " << ecs::storage_traits<aa_storage<some_type>>::empty_exists
                   << '\n';
         std::cout << "full exists: " << ecs::storage_traits<aa_storage<some_type>>::full_exists
@@ -338,6 +341,9 @@ int main()
         //
         v = std::move(lv);
         print_container(v);
+        print_container(lv);
+
+        lv.assign({1,2,4,5,6,7,8,9,0,6,5,3,2,34,4,5,6,4,3,4,45,6});
         print_container(lv);
 
         return 0;
