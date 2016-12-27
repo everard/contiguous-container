@@ -166,7 +166,7 @@ struct storage_traits
 
         //
         template <typename S>
-        using swap_trait = decltype(std::declval<S>().swap(std::declval<S>()));
+        using swap_trait = decltype(std::declval<S>().swap(std::declval<S&>()));
         static constexpr bool swap_exists = meta::template exists<swap_trait, storage_type>;
 
         // constants:

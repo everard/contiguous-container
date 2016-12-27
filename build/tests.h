@@ -257,22 +257,21 @@ using aa_storage = ecs::allocator_aware_storage<ecs::vector_storage<T, Allocator
 
 int main()
 {
-
+        /*
         std::cout
-                << "\n--------------------------------------------------\nTESTING BOUNDED_ARRAY\n";
+        << "\n--------------------------------------------------\nTESTING BOUNDED_ARRAY\n";
         {
-                ecs::contiguous_container<uninitialized_memory_buffer<some_type, 64>> arr;
-                test_container(arr);
+        ecs::contiguous_container<uninitialized_memory_buffer<some_type, 64>> arr;
+        test_container(arr);
         }
 
         std::cout << "\n--------------------------------------------------\nTESTING STD::VECTOR\n";
         {
-                std::vector<some_type> arr;
-                arr.reserve(64);
-                test_container(arr);
+        std::vector<some_type> arr;
+        arr.reserve(64);
+        test_container(arr);
         }
-
-
+        */
         static_assert(std::is_same<std::allocator_traits<std::allocator<some_type>>::const_pointer,
                                    const some_type*>::value);
 
@@ -286,6 +285,8 @@ int main()
         static_assert(ecs::storage_traits<aa_storage<some_type>>::end_const_exists);
 
         static_assert(ecs::storage_traits<aa_storage<some_type>>::reallocate_exists);
+        static_assert(ecs::storage_traits<aa_storage<some_type>>::reallocate_assign_exists);
+
         static_assert(ecs::storage_traits<aa_storage<some_type>>::empty_exists);
         static_assert(ecs::storage_traits<aa_storage<some_type>>::full_exists);
 
@@ -305,7 +306,7 @@ int main()
 
         std::cout << "reallocate exists: "
                   << ecs::storage_traits<aa_storage<some_type>>::reallocate_exists << '\n';
-        std::cout << "reallocate_fill exists: "
+        std::cout << "reallocate_assign exists: "
                   << ecs::storage_traits<aa_storage<some_type>>::reallocate_assign_exists << '\n';
 
         std::cout << "empty exists: " << ecs::storage_traits<aa_storage<some_type>>::empty_exists
@@ -324,7 +325,8 @@ int main()
                   << '\n';
 
         ecs::vector<some_type> v{4, 5};
-        //std::vector<int> v(4, 5);
+
+        // std::vector<int> v(4, 5);
         v.emplace_back(3);
         v.emplace_back(4);
 
@@ -343,7 +345,7 @@ int main()
         print_container(v);
         print_container(lv);
 
-        lv.assign({1,2,4,5,6,7,8,9,0,6,5,3,2,34,4,5,6,4,3,4,45,6});
+        lv.assign({1, 2, 4, 5, 6, 7, 8, 9, 0, 6, 5, 3, 2, 34, 4, 5, 6, 4, 3, 4, 45, 6});
         print_container(lv);
 
         return 0;

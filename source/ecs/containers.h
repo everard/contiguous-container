@@ -38,29 +38,9 @@ Storage& assign_n(Storage& storage, typename storage_traits<Storage>::size_type 
         using traits = storage_traits<Storage>;
 
         if(n > traits::capacity(storage))
-        {
-                storage.reallocate_fill_n(n, first);
-                return storage;
-        }
-
-        auto d = static_cast<typename traits::difference_type>(n);
-        if(n <= traits::size(storage))
-        {
-                for_each_iter(std::copy_n(first, n, traits::begin(storage)), traits::end(storage),
-                              [&storage](auto i) { traits::destroy(storage, i); });
-                traits::set_size(storage, n);
-        }
+                traits::reallocate_assign(storage, n, first);
         else
-        {
-                auto mid = first;
-                std::advance(mid, traits::size(storage));
-
-                for_each_iter(std::copy(first, mid, traits::begin(storage)),
-                              traits::begin(storage) + d, [&storage, &mid](auto i) {
-                                      traits::construct(storage, i, *mid),
-                                              traits::inc_size(storage), (void)++mid;
-                              });
-        }
+                traits::assign(storage, n, first);
 
         return storage;
 }
@@ -79,8 +59,6 @@ struct allocator_aware_storage : Storage
         //
         using typename base::value_type;
         using typename base::allocator_type;
-
-        //
         using allocator_traits = std::allocator_traits<allocator_type>;
 
         //
@@ -93,10 +71,6 @@ struct allocator_aware_storage : Storage
         // friend declarations:
         //
         friend struct storage_traits<allocator_aware_storage>;
-
-        template <typename S, typename ForwardIterator>
-        friend Storage& detail::assign_n(S&, typename storage_traits<S>::size_type,
-                                         ForwardIterator);
 
         // assertions:
         //
@@ -157,15 +131,17 @@ struct allocator_aware_storage : Storage
         allocator_aware_storage(const allocator_aware_storage& other, const allocator_type& a)
                 : base{traits::size(other), a}
         {
-                detail::initialize_elements(
-                        *this, [first = traits::begin(other)](auto& storage, auto i) mutable {
-                                traits::construct(storage, i, *first), (void)++first;
-                        });
+                auto first = traits::begin(other);
+                detail::initialize_elements(*this, [&first](auto& storage, auto i) {
+                        (void)traits::construct(storage, i, *first), (void)++first;
+                });
         }
 
         allocator_aware_storage(allocator_aware_storage&& other, const allocator_type& a)
                 : base{std::move(other), a}
         {
+                other.destroy_elements();
+                traits::set_size(other, 0);
         }
 
         // copy/move assign:
@@ -182,7 +158,7 @@ struct allocator_aware_storage : Storage
                         if(!allocator_traits::is_always_equal::value &&
                            this->get_allocator_ref() != other.get_allocator_ref())
                         {
-                                destroy_range(traits::begin(*this), traits::end(*this));
+                                this->destroy_elements();
                                 this->deallocate();
                         }
 
@@ -194,12 +170,16 @@ struct allocator_aware_storage : Storage
 
         allocator_aware_storage& operator=(allocator_aware_storage&&) = default;
 
-protected: //
-        // destroy:
-        //
+        // return copy of current allocator:
+        allocator_type get_allocator() const noexcept
+        {
+                return this->get_allocator_ref();
+        }
+
+protected:
         ~allocator_aware_storage()
         {
-                destroy_range(traits::begin(*this), traits::end(*this));
+                this->destroy_elements();
         }
 
 private:
@@ -218,20 +198,14 @@ private:
                 }
         }
 
-        template <typename InputIterator>
-        allocator_aware_storage(InputIterator first, InputIterator last, const allocator_type& a,
-                                std::forward_iterator_tag)
+        template <typename ForwardIterator>
+        allocator_aware_storage(ForwardIterator first, ForwardIterator last,
+                                const allocator_type& a, std::forward_iterator_tag)
                 : base{static_cast<size_type>(std::distance(first, last)), a}
         {
                 detail::initialize_elements(*this, [&first](auto& storage, auto i) {
-                        traits::construct(storage, i, *first), ++first;
+                        (void)traits::construct(storage, i, *first), (void)++first;
                 });
-        }
-
-        //
-        void destroy_range(pointer first, pointer last) noexcept
-        {
-                for_each_iter(first, last, [this](auto i) { traits::destroy(*this, i); });
         }
 };
 
@@ -258,10 +232,21 @@ struct vector_storage
         //
         friend struct storage_traits<vector_storage>;
 
+        // deleted copy constructor and assignment operator:
         //
-        template <typename Storage, typename ForwardIterator>
-        friend Storage& detail::assign_n(Storage&, typename storage_traits<Storage>::size_type,
-                                         ForwardIterator);
+        vector_storage(const vector_storage&) = delete;
+        vector_storage& operator=(const vector_storage&) = delete;
+
+        // swap:
+        //
+        void swap(vector_storage& other) noexcept(
+                allocator_traits::propagate_on_container_swap::value ||
+                allocator_traits::is_always_equal::value)
+        {
+                impl_.swap(other.impl_);
+                if(allocator_traits::propagate_on_container_swap::value)
+                        std::swap(get_allocator_ref(), other.get_allocator_ref());
+        }
 
 protected:
         struct impl : allocator_type
@@ -274,11 +259,6 @@ protected:
                 {
                 }
 
-                ~impl()
-                {
-                        free_memory();
-                }
-
                 impl(const impl&) = delete;
                 impl(impl&&) = default;
 
@@ -286,24 +266,18 @@ protected:
                 impl& operator=(impl&&) = default;
 
                 //
-                void allocate_memory(size_type n)
+                void swap(impl& other) noexcept
                 {
-                        beg_ = this->allocate(n);
-                        end_ = cap_ = beg_ + static_cast<difference_type>(n);
+                        std::swap(beg_, other.beg_);
+                        std::swap(end_, other.end_);
+                        std::swap(cap_, other.cap_);
                 }
 
-                void free_memory() noexcept
-                {
-                        allocator_traits::deallocate(
-                                *this, beg_, static_cast<size_type>(cap_ - beg_));
-
-                        beg_ = end_ = cap_ = pointer{};
-                }
-
+                //
                 pointer beg_{}, end_{}, cap_{};
         };
 
-        // construct/copy/destroy:
+        // construct/destroy:
         //
         vector_storage() noexcept(noexcept(impl{})) : impl_{}
         {
@@ -315,14 +289,17 @@ protected:
 
         vector_storage(size_type n, const allocator_type& a) : vector_storage{a}
         {
-                impl_.allocate_memory(n);
+                impl_.beg_ = allocator_traits::allocate(impl_, n);
+                impl_.end_ = impl_.cap_ = impl_.beg_ + static_cast<difference_type>(n);
         }
 
-        //
-        ~vector_storage() = default;
+        ~vector_storage()
+        {
+                allocator_traits::deallocate(impl_, impl_.beg_, capacity());
+        }
 
+        // move construct:
         //
-        vector_storage(const vector_storage&) = delete;
         vector_storage(vector_storage&& other) noexcept : impl_{std::move(other.impl_)}
         {
                 other.impl_.beg_ = other.impl_.end_ = other.impl_.cap_ = pointer{};
@@ -332,31 +309,44 @@ protected:
                        const allocator_type& a) noexcept(allocator_traits::is_always_equal::value)
                 : impl_{a}
         {
-                if(get_allocator_ref() == other.get_allocator_ref())
+                if(allocator_traits::is_always_equal::value ||
+                   get_allocator_ref() == other.get_allocator_ref())
                 {
-                        std::swap(impl_, other.impl_);
+                        impl_.swap(other.impl_);
                         return;
                 }
 
-                // TODO
+                auto first = traits::begin(other);
+                detail::initialize_elements(*this, [&first](auto& storage, auto i) {
+                        (void)traits::construct(storage, i, std::move(*first)), (void)++first;
+                });
         }
 
-        // copy/move assign
-        vector_storage& operator=(const vector_storage&) = delete;
+        // move assign:
+        //
         vector_storage& operator=(vector_storage&& other) noexcept(
                 allocator_traits::propagate_on_container_move_assignment::value ||
                 allocator_traits::is_always_equal::value)
         {
-                if /*constexpr*/ (allocator_traits::propagate_on_container_move_assignment::value ||
-                                  allocator_traits::is_always_equal::value)
-                        return move_storage(std::move(other));
+                if(allocator_traits::propagate_on_container_move_assignment::value ||
+                   allocator_traits::is_always_equal::value ||
+                   get_allocator_ref() == other.get_allocator_ref())
+                {
+                        destroy_elements();
+                        deallocate();
 
-                if(get_allocator_ref() == other.get_allocator_ref())
-                        return move_storage(std::move(other));
+                        impl_.swap(other.impl_);
+
+                        if /*constexpr*/ (
+                                allocator_traits::propagate_on_container_move_assignment::value)
+                                get_allocator_ref() = std::move(other.get_allocator_ref());
+
+                        return *this;
+                }
 
                 detail::assign_n(*this, other.size(), std::make_move_iterator(other.begin()));
 
-                for_each_iter(other.begin(), other.end(), [&other](auto i) { other.destroy(i); });
+                other.destroy_elements();
                 other.deallocate();
 
                 return *this;
@@ -374,9 +364,16 @@ protected:
                 return static_cast<const allocator_type&>(impl_);
         }
 
+        //
+        void destroy_elements() noexcept
+        {
+                for_each_iter(begin(), end(), [this](auto i) { this->destroy(i); });
+        }
+
         void deallocate() noexcept
         {
-                impl_.free_memory();
+                allocator_traits::deallocate(impl_, impl_.beg_, capacity());
+                impl_.beg_ = impl_.end_ = impl_.cap_ = pointer{};
         }
 
         //
@@ -403,6 +400,7 @@ protected:
                 return impl_.beg_;
         }
 
+        //
         pointer end() noexcept
         {
                 return impl_.end_;
@@ -414,20 +412,22 @@ protected:
         }
 
         //
+        bool reallocate(size_type n)
+        {
+                auto first = begin();
+                reallocate_initialize_n(n, impl_.end_ - impl_.beg_, [this, &first](auto i) {
+                        this->construct(i, std::move_if_noexcept(*first)), (void)++first;
+                });
+
+                return true;
+        }
+
         template <typename ForwardIterator>
-        void reallocate_fill_n(size_type n, ForwardIterator first)
+        bool reallocate_assign(size_type n, ForwardIterator first)
         {
                 reallocate_initialize_n(n, static_cast<difference_type>(n), [this, &first](auto i) {
                         this->construct(i, *first), (void)++first;
                 });
-        }
-
-        bool reallocate(size_type n)
-        {
-                reallocate_initialize_n(
-                        n, impl_.end_ - impl_.beg_, [ this, first = begin() ](auto i) mutable {
-                                this->construct(i, std::move_if_noexcept(*first)), (void)++first;
-                        });
 
                 return true;
         }
@@ -493,8 +493,8 @@ private:
 
                 try
                 {
-                        for_each_iter(
-                                first, last, [&init, &first](auto i) { init(i), (void)++first; });
+                        for(; first != last; ++first)
+                                init(first);
                 }
                 catch(...)
                 {
@@ -504,33 +504,19 @@ private:
                         throw;
                 }
 
-                for_each_iter(begin(), end(), [this](auto i) { this->destroy(i); });
-                allocator_traits::deallocate(impl_, impl_.beg_, capacity());
+                destroy_elements();
+                deallocate();
 
                 impl_.beg_ = ptr;
                 impl_.end_ = ptr + n;
                 impl_.cap_ = ptr + static_cast<difference_type>(new_capacity);
         }
 
-        vector_storage& move_storage(vector_storage&& other) noexcept
-        {
-                for_each_iter(begin(), end(), [this](auto i) { this->destroy(i); });
-                deallocate();
-
-                std::swap(impl_.beg_, other.impl_.beg_);
-                std::swap(impl_.end_, other.impl_.end_);
-                std::swap(impl_.cap_, other.impl_.cap_);
-
-                if /*constexpr*/ (allocator_traits::propagate_on_container_move_assignment::value)
-                        get_allocator_ref() = std::move(other.get_allocator_ref());
-
-                return *this;
-        }
-
         //
         impl impl_;
 };
 
+// containers:
 template <typename T, typename Allocator = std::allocator<T>>
 using vector = contiguous_container<allocator_aware_storage<vector_storage<T, Allocator>>>;
 
