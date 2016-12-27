@@ -186,7 +186,7 @@ private:
         template <typename InputIterator>
         allocator_aware_storage(InputIterator first, InputIterator last, const allocator_type& a,
                                 std::input_iterator_tag)
-                : base{a}
+                : allocator_aware_storage{a}
         {
                 for(; first != last; ++first)
                 {
