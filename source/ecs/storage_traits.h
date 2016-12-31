@@ -16,7 +16,6 @@ template <typename Storage>
 struct storage_traits
 {
         // implementation of meta-traits:
-        //
         struct meta
         {
                 template <typename...>
@@ -61,7 +60,6 @@ struct storage_traits
         };
 
         // type selectors:
-        //
         template <typename S>
         using value_type_trait = typename S::value_type;
 
@@ -98,7 +96,6 @@ struct storage_traits
                                                     size_type_trait, S>;
 
         // types:
-        //
         using storage_type = Storage;
         using value_type = typename storage_type::value_type;
 
@@ -109,7 +106,6 @@ struct storage_traits
         using difference_type = select_difference_type<storage_type>;
 
         // member function traits:
-        //
         template <typename S>
         using construct_trait = decltype(std::declval<S>().construct(std::declval<pointer>()));
         static constexpr bool construct_exists =
@@ -170,12 +166,10 @@ struct storage_traits
         static constexpr bool swap_exists = meta::template exists<swap_trait, storage_type>;
 
         // constants:
-        //
         static constexpr size_type max_ptrdiff =
                 static_cast<size_type>(std::numeric_limits<difference_type>::max());
 
         // construct/destroy:
-        //
         template <bool E = construct_exists, std::enable_if_t<E, int> = 0, typename... Args>
         static constexpr pointer construct(storage_type& storage, pointer location, Args&&... args)
         {
@@ -205,7 +199,6 @@ struct storage_traits
         }
 
         // iterators:
-        //
         static constexpr pointer begin(storage_type& storage) noexcept
         {
                 return storage.begin();
@@ -243,7 +236,6 @@ struct storage_traits
         }
 
         // capacity:
-        //
         template <bool E = reallocate_exists, std::enable_if_t<E, int> = 0>
         static constexpr bool reallocate(storage_type& storage, size_type n)
         {
@@ -310,7 +302,6 @@ struct storage_traits
         }
 
         // size:
-        //
         static constexpr void set_size(storage_type& storage, size_type n) noexcept
         {
                 storage.set_size(n);
@@ -362,7 +353,6 @@ struct storage_traits
         }
 
         // swap:
-        //
         template <bool E = swap_exists, std::enable_if_t<E, int> = 0>
         static constexpr void swap(storage_type& lhs,
                                    storage_type& rhs) noexcept(noexcept(lhs.swap(rhs)))
@@ -378,7 +368,6 @@ struct storage_traits
         }
 
         // pointer manipulation:
-        //
         template <typename T>
         static constexpr T* ptr_cast(T* ptr) noexcept
         {
@@ -392,7 +381,6 @@ struct storage_traits
         }
 
         // assignment:
-        //
         template <typename ForwardIterator>
         static constexpr void assign(storage_type& storage, size_type n, ForwardIterator first)
         {

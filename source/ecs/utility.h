@@ -47,7 +47,6 @@ template <typename Iterator>
 struct identity_iterator
 {
         // types:
-        //
         using iterator_type = Iterator;
         using iterator_category = std::forward_iterator_tag;
 

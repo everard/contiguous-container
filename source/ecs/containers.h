@@ -11,29 +11,16 @@ namespace ecs
 {
 namespace detail
 {
-template <typename Storage, typename Initializer>
-void initialize_elements(Storage& storage, Initializer init)
+template <typename Storage, typename... Args>
+void initialize_next(Storage& storage, Args&&... args)
 {
         using traits = storage_traits<Storage>;
-        auto first = traits::begin(storage), last = traits::end(storage);
-
-        try
-        {
-                for(; first != last; ++first)
-                        init(storage, first);
-        }
-        catch(...)
-        {
-                for(auto i = traits::begin(storage); i != first; ++i)
-                        traits::destroy(storage, i);
-
-                throw;
-        }
+        traits::construct(storage, traits::end(storage), std::forward<Args>(args)...);
+        traits::inc_size(storage);
 }
 
-template <typename Storage, typename ForwardIterator>
-Storage& assign_n(Storage& storage, typename storage_traits<Storage>::size_type n,
-                  ForwardIterator first)
+template <typename Storage, typename Size, typename ForwardIterator>
+Storage& assign_n(Storage& storage, Size n, ForwardIterator first)
 {
         using traits = storage_traits<Storage>;
 
@@ -52,53 +39,41 @@ template <typename Storage>
 struct allocator_aware_storage : Storage
 {
         // types:
-        //
-        using base = Storage;
-        using traits = storage_traits<base>;
+        using typename Storage::value_type;
+        using typename Storage::allocator_type;
 
-        //
-        using typename base::value_type;
-        using typename base::allocator_type;
-        using allocator_traits = std::allocator_traits<allocator_type>;
+        using pointer = typename std::allocator_traits<allocator_type>::pointer;
+        using const_pointer = typename std::allocator_traits<allocator_type>::const_pointer;
 
-        //
-        using pointer = typename allocator_traits::pointer;
-        using const_pointer = typename allocator_traits::const_pointer;
+        using size_type = typename std::allocator_traits<allocator_type>::size_type;
+        using difference_type = typename std::allocator_traits<allocator_type>::difference_type;
 
-        using size_type = typename allocator_traits::size_type;
-        using difference_type = typename allocator_traits::difference_type;
-
-        // friend declarations:
-        //
-        friend struct storage_traits<allocator_aware_storage>;
-
-        // assertions:
-        //
-        static_assert(std::is_same<value_type, typename allocator_traits::value_type>::value);
+        struct principal_tag
+        {
+        };
 
         // construct:
-        //
-        allocator_aware_storage() noexcept(noexcept(allocator_type{})) : base{}
+        allocator_aware_storage() noexcept(noexcept(allocator_type{})) : Storage{}
         {
         }
 
-        explicit allocator_aware_storage(const allocator_type& a) noexcept : base{a}
+        explicit allocator_aware_storage(const allocator_type& a) noexcept : Storage{a}
         {
         }
 
         explicit allocator_aware_storage(size_type n, const allocator_type& a = allocator_type{})
-                : base{n, a}
+                : allocator_aware_storage{n, a, principal_tag{}}
         {
-                detail::initialize_elements(
-                        *this, [](auto& storage, auto i) { traits::construct(storage, i); });
+                for(; n > 0; --n)
+                        detail::initialize_next(*this);
         }
 
         allocator_aware_storage(size_type n, const value_type& x,
                                 const allocator_type& a = allocator_type{})
-                : base{n, a}
+                : allocator_aware_storage{n, a, principal_tag{}}
         {
-                detail::initialize_elements(
-                        *this, [&x](auto& storage, auto i) { traits::construct(storage, i, x); });
+                for(; n > 0; --n)
+                        detail::initialize_next(*this, x);
         }
 
         template <typename InputIterator, typename = check_input_iterator<InputIterator>>
@@ -112,15 +87,14 @@ struct allocator_aware_storage : Storage
 
         allocator_aware_storage(std::initializer_list<value_type> il,
                                 const allocator_type& a = allocator_type{})
-                : allocator_aware_storage{il.begin(), il.end(), a}
+                : allocator_aware_storage{il.begin(), il.end(), a, std::forward_iterator_tag{}}
         {
         }
 
         // copy/move construct:
-        //
         allocator_aware_storage(const allocator_aware_storage& other)
                 : allocator_aware_storage{
-                          other, allocator_traits::select_on_container_copy_construction(
+                          other, alloc_traits_::select_on_container_copy_construction(
                                          other.get_allocator_ref())}
         {
         }
@@ -129,33 +103,30 @@ struct allocator_aware_storage : Storage
 
         //
         allocator_aware_storage(const allocator_aware_storage& other, const allocator_type& a)
-                : base{traits::size(other), a}
+                : allocator_aware_storage{traits_::size(other), a, principal_tag{}}
         {
-                auto first = traits::begin(other);
-                detail::initialize_elements(*this, [&first](auto& storage, auto i) {
-                        (void)traits::construct(storage, i, *first), (void)++first;
-                });
+                for(auto& x : other)
+                        detail::initialize_next(*this, x);
         }
 
         allocator_aware_storage(allocator_aware_storage&& other, const allocator_type& a)
-                : base{std::move(other), a}
+                : Storage{std::move(other), a}
         {
                 other.destroy_elements();
-                traits::set_size(other, 0);
+                traits_::set_size(other, 0);
         }
 
         // copy/move assign:
-        //
         allocator_aware_storage& operator=(const allocator_aware_storage& other)
         {
                 if(this == std::addressof(other))
                         return *this;
 
                 // copy allocator if needed
-                if /*constexpr*/ (allocator_traits::propagate_on_container_copy_assignment::value)
+                if /*constexpr*/ (alloc_traits_::propagate_on_container_copy_assignment::value)
                 {
                         // deallocate memory if allocators are not equal
-                        if(!allocator_traits::is_always_equal::value &&
+                        if(!alloc_traits_::is_always_equal::value &&
                            this->get_allocator_ref() != other.get_allocator_ref())
                         {
                                 this->destroy_elements();
@@ -165,12 +136,12 @@ struct allocator_aware_storage : Storage
                         this->get_allocator_ref() = other.get_allocator_ref();
                 }
 
-                return detail::assign_n(*this, traits::size(other), traits::begin(other));
+                return detail::assign_n(*this, traits_::size(other), traits_::begin(other));
         }
 
         allocator_aware_storage& operator=(allocator_aware_storage&&) = default;
 
-        // return copy of current allocator:
+        // returns copy of current allocator:
         allocator_type get_allocator() const noexcept
         {
                 return this->get_allocator_ref();
@@ -183,6 +154,10 @@ protected:
         }
 
 private:
+        allocator_aware_storage(size_type n, const allocator_type& a, principal_tag) : Storage{n, a}
+        {
+        }
+
         template <typename InputIterator>
         allocator_aware_storage(InputIterator first, InputIterator last, const allocator_type& a,
                                 std::input_iterator_tag)
@@ -190,38 +165,43 @@ private:
         {
                 for(; first != last; ++first)
                 {
-                        if(traits::full(*this))
-                                traits::reallocate(*this, traits::capacity(*this) + 1);
+                        if(traits_::full(*this))
+                                traits_::reallocate(*this, traits_::capacity(*this) + 1);
 
-                        traits::construct(*this, traits::end(*this), *first);
-                        traits::inc_size(*this);
+                        detail::initialize_next(*this, *first);
                 }
         }
 
         template <typename ForwardIterator>
         allocator_aware_storage(ForwardIterator first, ForwardIterator last,
                                 const allocator_type& a, std::forward_iterator_tag)
-                : base{static_cast<size_type>(std::distance(first, last)), a}
+                : allocator_aware_storage{
+                          static_cast<size_type>(std::distance(first, last)), a, principal_tag{}}
         {
-                detail::initialize_elements(*this, [&first](auto& storage, auto i) {
-                        (void)traits::construct(storage, i, *first), (void)++first;
-                });
+                for_each_iter(first, last, [this](auto i) { detail::initialize_next(*this, *i); });
         }
+
+        // additional types:
+        using traits_ = storage_traits<allocator_aware_storage>;
+        using alloc_traits_ = std::allocator_traits<allocator_type>;
+
+        // friend declaration:
+        friend struct storage_traits<allocator_aware_storage>;
+
+        // requirement on allocator type:
+        static_assert(std::is_same<value_type, typename alloc_traits_::value_type>::value);
 };
 
 template <typename T, typename Allocator>
 struct vector_storage
 {
         // types:
-        //
         using value_type = T;
         using allocator_type = Allocator;
 
-        //
         using traits = storage_traits<vector_storage>;
         using allocator_traits = std::allocator_traits<allocator_type>;
 
-        //
         using pointer = typename allocator_traits::pointer;
         using const_pointer = typename allocator_traits::const_pointer;
 
@@ -229,16 +209,13 @@ struct vector_storage
         using difference_type = typename allocator_traits::difference_type;
 
         // friend declarations:
-        //
         friend struct storage_traits<vector_storage>;
 
         // deleted copy constructor and assignment operator:
-        //
         vector_storage(const vector_storage&) = delete;
         vector_storage& operator=(const vector_storage&) = delete;
 
         // swap:
-        //
         void swap(vector_storage& other) noexcept(
                 allocator_traits::propagate_on_container_swap::value ||
                 allocator_traits::is_always_equal::value)
@@ -278,7 +255,6 @@ protected:
         };
 
         // construct/destroy:
-        //
         vector_storage() noexcept(noexcept(impl{})) : impl_{}
         {
         }
@@ -287,19 +263,19 @@ protected:
         {
         }
 
-        vector_storage(size_type n, const allocator_type& a) : vector_storage{a}
+        vector_storage(size_type n, const allocator_type& a) : impl_{a}
         {
-                impl_.beg_ = allocator_traits::allocate(impl_, n);
-                impl_.end_ = impl_.cap_ = impl_.beg_ + static_cast<difference_type>(n);
+                impl_.beg_ = impl_.end_ = impl_.cap_ = allocator_traits::allocate(impl_, n);
+                impl_.cap_ += static_cast<difference_type>(n);
         }
 
         ~vector_storage()
         {
-                allocator_traits::deallocate(impl_, impl_.beg_, capacity());
+                if(impl_.beg_)
+                        allocator_traits::deallocate(impl_, impl_.beg_, capacity());
         }
 
         // move construct:
-        //
         vector_storage(vector_storage&& other) noexcept : impl_{std::move(other.impl_)}
         {
                 other.impl_.beg_ = other.impl_.end_ = other.impl_.cap_ = pointer{};
@@ -316,14 +292,26 @@ protected:
                         return;
                 }
 
-                auto first = traits::begin(other);
-                detail::initialize_elements(*this, [&first](auto& storage, auto i) {
-                        (void)traits::construct(storage, i, std::move(*first)), (void)++first;
-                });
+                if(other.empty())
+                        return;
+
+                impl_.beg_ = impl_.end_ = impl_.cap_ =
+                        allocator_traits::allocate(impl_, other.size());
+                impl_.cap_ += static_cast<difference_type>(other.size());
+
+                try
+                {
+                        for(auto i : other)
+                                detail::initialize_next(*this, std::move(*i));
+                }
+                catch(...)
+                {
+                        destroy_elements();
+                        throw;
+                }
         }
 
         // move assign:
-        //
         vector_storage& operator=(vector_storage&& other) noexcept(
                 allocator_traits::propagate_on_container_move_assignment::value ||
                 allocator_traits::is_always_equal::value)
@@ -353,7 +341,6 @@ protected:
         }
 
         // interface:
-        //
         allocator_type& get_allocator_ref() noexcept
         {
                 return static_cast<allocator_type&>(impl_);

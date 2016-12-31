@@ -19,22 +19,18 @@ template <typename Storage>
 struct contiguous_container : Storage
 {
         // types:
-        //
         using traits = ecs::storage_traits<Storage>;
         using value_type = typename traits::value_type;
 
-        //
         using pointer = typename traits::pointer;
         using const_pointer = typename traits::const_pointer;
 
         using reference = value_type&;
         using const_reference = const value_type&;
 
-        //
         using size_type = typename traits::size_type;
         using difference_type = typename traits::difference_type;
 
-        //
         using iterator = pointer;
         using const_iterator = const_pointer;
 
@@ -42,7 +38,6 @@ struct contiguous_container : Storage
         using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
         // construct/copy/destroy:
-        //
         using Storage::Storage;
 
         constexpr contiguous_container& operator=(std::initializer_list<value_type> il)
@@ -51,7 +46,6 @@ struct contiguous_container : Storage
                 return *this;
         }
 
-        //
         template <typename InputIterator, typename = check_input_iterator<InputIterator>>
         constexpr bool assign(InputIterator first, InputIterator last)
         {
@@ -70,7 +64,6 @@ struct contiguous_container : Storage
         }
 
         // iterators:
-        //
         constexpr iterator begin() noexcept
         {
                 return traits::begin(*this);
@@ -135,7 +128,6 @@ struct contiguous_container : Storage
         }
 
         // capacity:
-        //
         constexpr bool empty() const noexcept
         {
                 return traits::empty(*this);
@@ -172,7 +164,6 @@ struct contiguous_container : Storage
         }
 
         // element access:
-        //
         constexpr reference operator[](size_type i) noexcept
         {
                 assert(i < size());
@@ -227,7 +218,7 @@ struct contiguous_container : Storage
                 return *(--end());
         }
 
-        //
+        // data access:
         constexpr value_type* data() noexcept
         {
                 return traits::ptr_cast(traits::begin(*this));
@@ -239,7 +230,6 @@ struct contiguous_container : Storage
         }
 
         // modifiers:
-        //
         template <typename... Args>
         constexpr iterator emplace_back(Args&&... args)
         {
