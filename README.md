@@ -1,4 +1,4 @@
-This repository contains implementation of the R1D3 version of [contiguous_container](https://everard.github.io/contiguous_container).
+This repository contains implementation of the R1D4 version of [contiguous_container](https://everard.github.io/contiguous_container).
 
 Header containers.h (WIP) implements some common container types using contiguous_container:
  - vector - normal vector, almost the same as std::vector.

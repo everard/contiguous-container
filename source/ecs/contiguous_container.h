@@ -49,18 +49,18 @@ struct contiguous_container : Storage
         template <typename InputIterator, typename = check_input_iterator<InputIterator>>
         constexpr bool assign(InputIterator first, InputIterator last)
         {
-                return assign(first, last,
-                              typename std::iterator_traits<InputIterator>::iterator_category{});
+                return assign_(first, last,
+                               typename std::iterator_traits<InputIterator>::iterator_category{});
         }
 
         constexpr bool assign(std::initializer_list<value_type> il)
         {
-                return assign(il.begin(), il.end());
+                return assign_(il.begin(), il.end(), std::forward_iterator_tag{});
         }
 
         constexpr bool assign(size_type n, const_reference u)
         {
-                return assign_n(n, make_identity_iterator(std::addressof(u)));
+                return assign_n_(n, make_identity_iterator(std::addressof(u)));
         }
 
         // iterators:
@@ -155,6 +155,16 @@ struct contiguous_container : Storage
         }
 
         //
+        constexpr bool resize(size_type sz)
+        {
+                return resize_(sz);
+        }
+
+        constexpr bool resize(size_type sz, const_reference x)
+        {
+                return resize_(sz, x);
+        }
+
         constexpr bool reserve(size_type n)
         {
                 if(n <= capacity())
@@ -260,13 +270,14 @@ struct contiguous_container : Storage
         template <typename... Args>
         constexpr iterator emplace(const_iterator position, Args&&... args)
         {
-                assert(iter_check(position));
+                assert(iter_check_(position));
 
                 if(position == end())
                         return emplace_back(std::forward<Args>(args)...);
 
                 value_type x{std::forward<Args>(args)...};
-                return insert_n(iter_cast(position), 1, std::make_move_iterator(std::addressof(x)));
+                return insert_n_(
+                        iter_cast_(position), 1, std::make_move_iterator(std::addressof(x)));
         }
 
         constexpr iterator insert(const_iterator position, const_reference x)
@@ -283,42 +294,43 @@ struct contiguous_container : Storage
         template <typename InputIterator, typename = check_input_iterator<InputIterator>>
         constexpr iterator insert(const_iterator position, InputIterator first, InputIterator last)
         {
-                assert(iter_check(position));
-                return insert(position, first, last,
-                              typename std::iterator_traits<InputIterator>::iterator_category{});
+                assert(iter_check_(position));
+                return insert_(position, first, last,
+                               typename std::iterator_traits<InputIterator>::iterator_category{});
         }
 
         constexpr iterator insert(const_iterator position, std::initializer_list<value_type> il)
         {
-                return insert(position, il.begin(), il.end());
+                assert(iter_check_(position));
+                return insert_(position, il.begin(), il.end(), std::forward_iterator_tag{});
         }
 
         constexpr iterator insert(const_iterator position, size_type n, const_reference x)
         {
-                assert(iter_check(position));
-                return insert_n(iter_cast(position), static_cast<difference_type>(n),
-                                make_identity_iterator(std::addressof(x)));
+                assert(iter_check_(position));
+                return insert_n_(iter_cast_(position), static_cast<difference_type>(n),
+                                 make_identity_iterator(std::addressof(x)));
         }
 
         //
         constexpr iterator erase(const_iterator position)
         {
-                assert(iter_check(position) &&
+                assert(iter_check_(position) &&
                        std::not_equal_to<const_iterator>{}(position, end()));
-                return erase_n(iter_cast(position));
+                return erase_n_(iter_cast_(position));
         }
 
         constexpr iterator erase(const_iterator first, const_iterator last)
         {
-                assert(iter_check(first) && iter_check(last) &&
+                assert(iter_check_(first) && iter_check_(last) &&
                        std::less_equal<const_iterator>{}(first, last));
-                return erase_n(iter_cast(first), last - first);
+                return erase_n_(iter_cast_(first), last - first);
         }
 
         //
         constexpr void clear() noexcept
         {
-                destroy_range(begin(), end());
+                destroy_range_(begin(), end());
                 traits::set_size(*this, 0);
         }
 
@@ -329,7 +341,7 @@ struct contiguous_container : Storage
 
 private:
         template <typename InputIterator>
-        constexpr bool assign(InputIterator first, InputIterator last, std::input_iterator_tag)
+        constexpr bool assign_(InputIterator first, InputIterator last, std::input_iterator_tag)
         {
                 auto assigned = begin(), sentinel = end();
                 for(; first != last && assigned != sentinel; (void)++first, (void)++assigned)
@@ -338,26 +350,26 @@ private:
                 if(first == last)
                 {
                         traits::dec_size(*this, static_cast<size_type>(sentinel - assigned));
-                        destroy_range(assigned, sentinel);
+                        destroy_range_(assigned, sentinel);
                         return true;
                 }
 
                 for(iterator p{}; first != last; ++first)
-                        if(p = emplace_back(*first), p == end())
+                        if((void)(p = emplace_back(*first)), p == end())
                                 return false;
 
                 return true;
         }
 
         template <typename ForwardIterator>
-        constexpr bool assign(ForwardIterator first, ForwardIterator last,
-                              std::forward_iterator_tag)
+        constexpr bool assign_(ForwardIterator first, ForwardIterator last,
+                               std::forward_iterator_tag)
         {
-                return assign_n(static_cast<size_type>(std::distance(first, last)), first);
+                return assign_n_(static_cast<size_type>(std::distance(first, last)), first);
         }
 
         template <typename ForwardIterator>
-        constexpr bool assign_n(size_type n, ForwardIterator first)
+        constexpr bool assign_n_(size_type n, ForwardIterator first)
         {
                 if(n > capacity())
                         return traits::reallocate_assign(*this, n, first);
@@ -367,29 +379,52 @@ private:
         }
 
         //
+        template <typename... Args>
+        constexpr bool resize_(size_type sz, const Args&... x)
+        {
+                if(sz > capacity() && !traits::reallocate(*this, sz))
+                        return false;
+
+                auto target = begin() + static_cast<difference_type>(sz);
+                if(sz < size())
+                {
+                        destroy_range_(target, end());
+                        traits::set_size(*this, sz);
+                }
+                else
+                {
+                        for_each_iter(end(), target, [this, &x...](auto i) {
+                                traits::construct(*this, i, x...), traits::inc_size(*this);
+                        });
+                }
+
+                return true;
+        }
+
+        //
         template <typename InputIterator>
-        constexpr iterator insert(const_iterator position, InputIterator first, InputIterator last,
-                                  std::input_iterator_tag)
+        constexpr iterator insert_(const_iterator position, InputIterator first, InputIterator last,
+                                   std::input_iterator_tag)
         {
                 auto index = position - begin();
 
-                for(auto p = iter_cast(position); first != last; (void)++first, (void)++p)
-                        if(p = emplace(p, *first), p == end())
+                for(auto p = iter_cast_(position); first != last; (void)++first, (void)++p)
+                        if((void)(p = emplace(p, *first)), p == end())
                                 return end();
 
                 return begin() + index;
         }
 
         template <typename ForwardIterator>
-        constexpr iterator insert(const_iterator position, ForwardIterator first,
-                                  ForwardIterator last, std::forward_iterator_tag)
+        constexpr iterator insert_(const_iterator position, ForwardIterator first,
+                                   ForwardIterator last, std::forward_iterator_tag)
         {
-                return insert_n(iter_cast(position),
-                                static_cast<difference_type>(std::distance(first, last)), first);
+                return insert_n_(iter_cast_(position),
+                                 static_cast<difference_type>(std::distance(first, last)), first);
         }
 
         template <typename ForwardIterator>
-        constexpr iterator insert_n(iterator position, difference_type n, ForwardIterator first)
+        constexpr iterator insert_n_(iterator position, difference_type n, ForwardIterator first)
         {
                 if(n == 0)
                         return position;
@@ -431,11 +466,11 @@ private:
         }
 
         //
-        constexpr iterator erase_n(iterator position, difference_type n = 1)
+        constexpr iterator erase_n_(iterator position, difference_type n = 1)
         {
                 if(n != 0)
                 {
-                        destroy_range(std::move(position + n, end(), position), end());
+                        destroy_range_(std::move(position + n, end(), position), end());
                         traits::dec_size(*this, static_cast<size_type>(n));
                 }
 
@@ -443,17 +478,17 @@ private:
         }
 
         //
-        constexpr void destroy_range(iterator first, iterator last) noexcept
+        constexpr void destroy_range_(iterator first, iterator last) noexcept
         {
                 for_each_iter(first, last, [this](auto i) { traits::destroy(*this, i); });
         }
 
-        constexpr iterator iter_cast(const_iterator position) noexcept
+        constexpr iterator iter_cast_(const_iterator position) noexcept
         {
                 return begin() + (position - cbegin());
         }
 
-        constexpr bool iter_check(const_iterator position) noexcept
+        constexpr bool iter_check_(const_iterator position) noexcept
         {
                 using compare = std::less_equal<const_iterator>;
                 return compare{}(begin(), position) && compare{}(position, end());

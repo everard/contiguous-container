@@ -42,6 +42,11 @@ static_assert(sum() == 18 + 5, "");
 // Simple type for behavior check
 struct some_type
 {
+        some_type() : x{0}
+        {
+                std::cout << "default-constructing some type " << std::endl;
+        }
+
         some_type(int x_) : x{x_}
         {
                 std::cout << "constructing some type " << x << std::endl;
@@ -257,21 +262,20 @@ using aa_storage = ecs::allocator_aware_storage<ecs::vector_storage<T, Allocator
 
 int main()
 {
-        /*
         std::cout
-        << "\n--------------------------------------------------\nTESTING BOUNDED_ARRAY\n";
+                << "\n--------------------------------------------------\nTESTING BOUNDED_ARRAY\n";
         {
-        ecs::contiguous_container<uninitialized_memory_buffer<some_type, 64>> arr;
-        test_container(arr);
+                ecs::contiguous_container<uninitialized_memory_buffer<some_type, 64>> arr;
+                test_container(arr);
         }
 
         std::cout << "\n--------------------------------------------------\nTESTING STD::VECTOR\n";
         {
-        std::vector<some_type> arr;
-        arr.reserve(64);
-        test_container(arr);
+                std::vector<some_type> arr;
+                arr.reserve(64);
+                test_container(arr);
         }
-        */
+
         static_assert(std::is_same<std::allocator_traits<std::allocator<some_type>>::const_pointer,
                                    const some_type*>::value);
 
@@ -346,6 +350,10 @@ int main()
         print_container(lv);
 
         lv.assign({1, 2, 4, 5, 6, 7, 8, 9, 0, 6, 5, 3, 2, 34, 4, 5, 6, 4, 3, 4, 45, 6});
+        print_container(lv);
+
+        std::cout << "calling resize():\n";
+        lv.resize(28);
         print_container(lv);
 
         return 0;
