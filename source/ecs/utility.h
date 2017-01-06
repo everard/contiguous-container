@@ -13,6 +13,7 @@
 
 #include <cstddef>
 #include <utility>
+#include <memory>
 
 namespace ecs
 {
@@ -50,11 +51,11 @@ struct identity_iterator
         using iterator_type = Iterator;
         using iterator_category = std::forward_iterator_tag;
 
-        using difference_type = typename std::iterator_traits<iterator_type>::difference_type;
         using value_type = typename std::iterator_traits<iterator_type>::value_type;
+        using difference_type = typename std::iterator_traits<iterator_type>::difference_type;
 
+        using pointer = typename std::iterator_traits<iterator_type>::pointer;
         using reference = typename std::iterator_traits<iterator_type>::reference;
-        using pointer = iterator_type;
 
         //
         constexpr identity_iterator() = default;
@@ -67,9 +68,10 @@ struct identity_iterator
         {
                 return *base_;
         }
+
         constexpr pointer operator->() const
         {
-                return base_;
+                return std::addressof(operator*());
         }
 
         //
@@ -77,6 +79,7 @@ struct identity_iterator
         {
                 return *this;
         }
+
         constexpr identity_iterator operator++(int)
         {
                 return *this;

@@ -211,7 +211,6 @@ template <typename Iterator>
 struct input_iterator_adaptor
 {
         // types:
-        //
         using iterator_type = Iterator;
         using iterator_category = std::input_iterator_tag;
 

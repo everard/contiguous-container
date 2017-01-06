@@ -5,13 +5,13 @@
 #ifndef CONTIGUOUS_CONTAINER_H
 #define CONTIGUOUS_CONTAINER_H
 
+#include "storage_traits.h"
+
 #include <initializer_list>
 #include <functional>
 
 #include <stdexcept>
 #include <cassert>
-
-#include "storage_traits.h"
 
 namespace ecs
 {
@@ -344,7 +344,7 @@ private:
         constexpr bool assign_(InputIterator first, InputIterator last, std::input_iterator_tag)
         {
                 auto assigned = begin(), sentinel = end();
-                for(; first != last && assigned != sentinel; (void)++first, (void)++assigned)
+                for(; first != last && assigned != sentinel; ++first, (void)++assigned)
                         *assigned = *first;
 
                 if(first == last)
@@ -408,7 +408,7 @@ private:
         {
                 auto index = position - begin();
 
-                for(auto p = iter_cast_(position); first != last; (void)++first, (void)++p)
+                for(auto p = iter_cast_(position); first != last; ++first, (void)++p)
                         if((void)(p = emplace(p, *first)), p == end())
                                 return end();
 
@@ -449,8 +449,7 @@ private:
                         std::advance(mid, m);
 
                         for_each_iter(first_to_construct, position + n, [this, &mid](auto i) {
-                                traits::construct(*this, i, *mid), traits::inc_size(*this),
-                                        (void)++mid;
+                                traits::construct(*this, i, *mid), traits::inc_size(*this), ++mid;
                         });
                 }
 

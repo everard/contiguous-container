@@ -6,9 +6,7 @@
 #define STORAGE_TRAITS_H
 
 #include "utility.h"
-
 #include <limits>
-#include <memory>
 
 namespace ecs
 {
