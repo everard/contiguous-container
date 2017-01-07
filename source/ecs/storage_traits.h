@@ -13,6 +13,10 @@ namespace ecs
 template <typename Storage>
 struct storage_traits
 {
+        // non-deduced types:
+        using storage_type = Storage;
+        using value_type = typename storage_type::value_type;
+
         // implementation of meta-traits:
         struct meta
         {
@@ -55,141 +59,127 @@ struct storage_traits
                 template <typename E, template <typename...> typename X, typename... Args>
                 static constexpr bool exists_exact =
                         std::is_same<E, typename detector<none, void, X, Args...>::type>::value;
+
+                //
+                template <typename Ptr>
+                using ptr_rebind =
+                        typename std::pointer_traits<Ptr>::template rebind<const value_type>;
+
+                template <typename Ptr>
+                using ptr_difference_type = typename std::pointer_traits<Ptr>::difference_type;
+
+                // type selection traits:
+                template <typename S>
+                using pointer_trait = typename S::pointer;
+                template <typename S>
+                using const_pointer_trait = typename S::const_pointer;
+
+                template <typename S>
+                using size_type_trait = typename S::size_type;
+                template <typename S>
+                using difference_type_trait = typename S::difference_type;
+
+                // types:
+                using pointer = select_type<value_type*, pointer_trait, storage_type>;
+                using const_pointer =
+                        select_type<ptr_rebind<pointer>, const_pointer_trait, storage_type>;
+
+                using size_type = select_type<
+                        std::make_unsigned_t<select_type<ptr_difference_type<pointer>,
+                                                         difference_type_trait, storage_type>>,
+                        size_type_trait, storage_type>;
+                using difference_type = select_type<ptr_difference_type<pointer>,
+                                                    difference_type_trait, storage_type>;
+
+                // member function detection traits:
+                template <typename S>
+                using construct_trait = decltype(std::declval<S>().construct(pointer{}));
+                template <typename S>
+                using destroy_trait = decltype(std::declval<S>().destroy(pointer{}));
+
+                template <typename S>
+                using end_trait = decltype(std::declval<S>().end());
+                template <typename S>
+                using end_const_trait = decltype(std::declval<std::add_const_t<S>>().end());
+
+                template <typename S>
+                using reallocate_trait = decltype(std::declval<S>().reallocate(size_type{}));
+                template <typename S>
+                using reallocate_assign_trait =
+                        decltype(std::declval<S>().reallocate_assign(size_type{}, pointer{}));
+
+                template <typename S>
+                using empty_trait = decltype(std::declval<std::add_const_t<S>>().empty());
+                template <typename S>
+                using full_trait = decltype(std::declval<std::add_const_t<S>>().full());
+
+                template <typename S>
+                using inc_size_trait = decltype(std::declval<S>().inc_size(size_type{}));
+                template <typename S>
+                using dec_size_trait = decltype(std::declval<S>().dec_size(size_type{}));
+                template <typename S>
+                using max_size_trait = decltype(std::declval<std::add_const_t<S>>().max_size());
+
+                template <typename S>
+                using swap_trait = decltype(std::declval<S>().swap(std::declval<S&>()));
+
+                // member function existence flags:
+                static constexpr bool construct_exists = exists<construct_trait, storage_type>;
+                static constexpr bool destroy_exists = exists<destroy_trait, storage_type>;
+
+                static constexpr bool end_exists = exists_exact<pointer, end_trait, storage_type>;
+                static constexpr bool end_const_exists =
+                        exists_exact<const_pointer, end_const_trait, storage_type>;
+
+                static constexpr bool reallocate_exists =
+                        exists_exact<bool, reallocate_trait, storage_type>;
+                static constexpr bool reallocate_assign_exists =
+                        exists_exact<bool, reallocate_assign_trait, storage_type>;
+
+                static constexpr bool empty_exists = exists_exact<bool, empty_trait, storage_type>;
+                static constexpr bool full_exists = exists_exact<bool, full_trait, storage_type>;
+
+                static constexpr bool inc_size_exists = exists<inc_size_trait, storage_type>;
+                static constexpr bool dec_size_exists = exists<dec_size_trait, storage_type>;
+                static constexpr bool max_size_exists =
+                        exists_exact<size_type, max_size_trait, storage_type>;
+
+                static constexpr bool swap_exists = exists<swap_trait, storage_type>;
         };
 
-        // type selectors:
-        template <typename S>
-        using value_type_trait = typename S::value_type;
+        // deduced types:
+        using pointer = typename meta::pointer;
+        using const_pointer = typename meta::const_pointer;
 
-        template <typename S>
-        using pointer_trait = typename S::pointer;
-        template <typename S>
-        using const_pointer_trait = typename S::const_pointer;
-
-        template <typename S>
-        using size_type_trait = typename S::size_type;
-        template <typename S>
-        using difference_type_trait = typename S::difference_type;
-
-        //
-        template <typename S>
-        using select_pointer_type =
-                typename meta::template select_type<value_type_trait<S>*, pointer_trait, S>;
-
-        template <typename S>
-        using select_const_pointer_type = typename meta::template select_type<
-                typename std::pointer_traits<select_pointer_type<S>>::template rebind<
-                        const value_type_trait<S>>,
-                const_pointer_trait, S>;
-
-        //
-        template <typename S>
-        using select_difference_type = typename meta::template select_type<
-                typename std::pointer_traits<select_pointer_type<S>>::difference_type,
-                difference_type_trait, S>;
-
-        template <typename S>
-        using select_size_type =
-                typename meta::template select_type<std::make_unsigned_t<select_difference_type<S>>,
-                                                    size_type_trait, S>;
-
-        // types:
-        using storage_type = Storage;
-        using value_type = typename storage_type::value_type;
-
-        using pointer = select_pointer_type<storage_type>;
-        using const_pointer = select_const_pointer_type<storage_type>;
-
-        using size_type = select_size_type<storage_type>;
-        using difference_type = select_difference_type<storage_type>;
-
-        // member function traits:
-        template <typename S>
-        using construct_trait = decltype(std::declval<S>().construct(std::declval<pointer>()));
-        static constexpr bool construct_exists =
-                meta::template exists<construct_trait, storage_type>;
-
-        template <typename S>
-        using destroy_trait = decltype(std::declval<S>().destroy(std::declval<pointer>()));
-        static constexpr bool destroy_exists = meta::template exists<destroy_trait, storage_type>;
-
-        //
-        template <typename S>
-        using end_trait = decltype(std::declval<S>().end());
-        static constexpr bool end_exists =
-                meta::template exists_exact<pointer, end_trait, storage_type>;
-        static constexpr bool end_const_exists =
-                meta::template exists_exact<const_pointer, end_trait, const storage_type>;
-
-        //
-        template <typename S>
-        using reallocate_trait = decltype(std::declval<S>().reallocate(std::declval<size_type>()));
-        static constexpr bool reallocate_exists =
-                meta::template exists_exact<bool, reallocate_trait, storage_type>;
-
-        template <typename S>
-        using reallocate_assign_trait = decltype(std::declval<S>().reallocate_assign(
-                std::declval<size_type>(), std::declval<value_type*>()));
-        static constexpr bool reallocate_assign_exists =
-                meta::template exists_exact<bool, reallocate_assign_trait, storage_type>;
-
-        template <typename S>
-        using empty_trait = decltype(std::declval<S>().empty());
-        static constexpr bool empty_exists =
-                meta::template exists_exact<bool, empty_trait, storage_type>;
-
-        template <typename S>
-        using full_trait = decltype(std::declval<S>().full());
-        static constexpr bool full_exists =
-                meta::template exists_exact<bool, full_trait, storage_type>;
-
-        //
-        template <typename S>
-        using inc_size_trait = decltype(std::declval<S>().inc_size(std::declval<size_type>()));
-        static constexpr bool inc_size_exists = meta::template exists<inc_size_trait, storage_type>;
-
-        template <typename S>
-        using dec_size_trait = decltype(std::declval<S>().dec_size(std::declval<size_type>()));
-        static constexpr bool dec_size_exists = meta::template exists<dec_size_trait, storage_type>;
-
-        //
-        template <typename S>
-        using max_size_trait = decltype(std::declval<S>().max_size());
-        static constexpr bool max_size_exists =
-                meta::template exists_exact<size_type, max_size_trait, storage_type>;
-
-        //
-        template <typename S>
-        using swap_trait = decltype(std::declval<S>().swap(std::declval<S&>()));
-        static constexpr bool swap_exists = meta::template exists<swap_trait, storage_type>;
+        using size_type = typename meta::size_type;
+        using difference_type = typename meta::difference_type;
 
         // constants:
         static constexpr size_type max_ptrdiff =
                 static_cast<size_type>(std::numeric_limits<difference_type>::max());
 
         // construct/destroy:
-        template <bool E = construct_exists, std::enable_if_t<E, int> = 0, typename... Args>
+        template <bool E = meta::construct_exists, std::enable_if_t<E, int> = 0, typename... Args>
         static constexpr pointer construct(storage_type& storage, pointer location, Args&&... args)
         {
                 storage.construct(location, std::forward<Args>(args)...);
                 return location;
         }
 
-        template <bool E = construct_exists, std::enable_if_t<!E, int> = 0, typename... Args>
+        template <bool E = meta::construct_exists, std::enable_if_t<!E, int> = 0, typename... Args>
         static constexpr pointer construct(storage_type&, pointer location, Args&&... args)
         {
                 ::new((void*)ptr_cast(location)) value_type{std::forward<Args>(args)...};
                 return location;
         }
 
-        //
-        template <bool E = destroy_exists, std::enable_if_t<E, int> = 0>
+        template <bool E = meta::destroy_exists, std::enable_if_t<E, int> = 0>
         static constexpr void destroy(storage_type& storage, pointer location) noexcept
         {
                 storage.destroy(location);
         }
 
-        template <bool E = destroy_exists, std::enable_if_t<!E, int> = 0>
+        template <bool E = meta::destroy_exists, std::enable_if_t<!E, int> = 0>
         static constexpr void destroy(storage_type&, pointer location) noexcept
         {
                 if(!std::is_trivially_destructible<value_type>::value)
@@ -207,47 +197,44 @@ struct storage_traits
                 return storage.begin();
         }
 
-        //
-        template <bool E = end_exists, std::enable_if_t<E, int> = 0>
+        template <bool E = meta::end_exists, std::enable_if_t<E, int> = 0>
         static constexpr pointer end(storage_type& storage) noexcept
         {
                 return storage.end();
         }
 
-        template <bool E = end_exists, std::enable_if_t<!E, int> = 0>
+        template <bool E = meta::end_exists, std::enable_if_t<!E, int> = 0>
         static constexpr pointer end(storage_type& storage) noexcept
         {
                 return begin(storage) + static_cast<difference_type>(storage.size());
         }
 
-        //
-        template <bool E = end_const_exists, std::enable_if_t<E, int> = 0>
+        template <bool E = meta::end_const_exists, std::enable_if_t<E, int> = 0>
         static constexpr const_pointer end(const storage_type& storage) noexcept
         {
                 return storage.end();
         }
 
-        template <bool E = end_const_exists, std::enable_if_t<!E, int> = 0>
+        template <bool E = meta::end_const_exists, std::enable_if_t<!E, int> = 0>
         static constexpr const_pointer end(const storage_type& storage) noexcept
         {
                 return begin(storage) + static_cast<difference_type>(storage.size());
         }
 
-        // capacity:
-        template <bool E = reallocate_exists, std::enable_if_t<E, int> = 0>
+        // capacity/size:
+        template <bool E = meta::reallocate_exists, std::enable_if_t<E, int> = 0>
         static constexpr bool reallocate(storage_type& storage, size_type n)
         {
                 return storage.reallocate(n);
         }
 
-        template <bool E = reallocate_exists, std::enable_if_t<!E, int> = 0>
+        template <bool E = meta::reallocate_exists, std::enable_if_t<!E, int> = 0>
         static constexpr bool reallocate(storage_type&, size_type) noexcept
         {
                 return false;
         }
 
-        //
-        template <bool E = reallocate_assign_exists, std::enable_if_t<E, int> = 0,
+        template <bool E = meta::reallocate_assign_exists, std::enable_if_t<E, int> = 0,
                   typename ForwardIterator>
         static constexpr bool reallocate_assign(storage_type& storage, size_type n,
                                                 ForwardIterator first)
@@ -255,7 +242,7 @@ struct storage_traits
                 return storage.reallocate_assign(n, first);
         }
 
-        template <bool E = reallocate_assign_exists, std::enable_if_t<!E, int> = 0,
+        template <bool E = meta::reallocate_assign_exists, std::enable_if_t<!E, int> = 0,
                   typename ForwardIterator>
         static constexpr bool reallocate_assign(storage_type& storage, size_type n,
                                                 ForwardIterator first)
@@ -268,64 +255,55 @@ struct storage_traits
         }
 
         //
-        template <bool E = empty_exists, std::enable_if_t<E, int> = 0>
+        template <bool E = meta::empty_exists, std::enable_if_t<E, int> = 0>
         static constexpr bool empty(const storage_type& storage) noexcept
         {
                 return storage.empty();
         }
 
-        template <bool E = empty_exists, std::enable_if_t<!E, int> = 0>
+        template <bool E = meta::empty_exists, std::enable_if_t<!E, int> = 0>
         static constexpr bool empty(const storage_type& storage) noexcept
         {
                 return storage.size() == 0;
         }
 
-        //
-        template <bool E = full_exists, std::enable_if_t<E, int> = 0>
+        template <bool E = meta::full_exists, std::enable_if_t<E, int> = 0>
         static constexpr bool full(const storage_type& storage) noexcept
         {
                 return storage.full();
         }
 
-        template <bool E = full_exists, std::enable_if_t<!E, int> = 0>
+        template <bool E = meta::full_exists, std::enable_if_t<!E, int> = 0>
         static constexpr bool full(const storage_type& storage) noexcept
         {
                 return storage.size() == storage.capacity();
         }
 
         //
-        static constexpr size_type capacity(const storage_type& storage) noexcept
-        {
-                return storage.capacity();
-        }
-
-        // size:
         static constexpr void set_size(storage_type& storage, size_type n) noexcept
         {
                 storage.set_size(n);
         }
 
-        //
-        template <bool E = inc_size_exists, std::enable_if_t<E, int> = 0>
+        template <bool E = meta::inc_size_exists, std::enable_if_t<E, int> = 0>
         static constexpr void inc_size(storage_type& storage, size_type n = 1) noexcept
         {
                 storage.inc_size(n);
         }
 
-        template <bool E = inc_size_exists, std::enable_if_t<!E, int> = 0>
+        template <bool E = meta::inc_size_exists, std::enable_if_t<!E, int> = 0>
         static constexpr void inc_size(storage_type& storage, size_type n = 1) noexcept
         {
                 storage.set_size(storage.size() + n);
         }
 
-        //
-        template <bool E = dec_size_exists, std::enable_if_t<E, int> = 0>
+        template <bool E = meta::dec_size_exists, std::enable_if_t<E, int> = 0>
         static constexpr void dec_size(storage_type& storage, size_type n = 1) noexcept
         {
                 storage.dec_size(n);
         }
 
-        template <bool E = dec_size_exists, std::enable_if_t<!E, int> = 0>
+        template <bool E = meta::dec_size_exists, std::enable_if_t<!E, int> = 0>
         static constexpr void dec_size(storage_type& storage, size_type n = 1) noexcept
         {
                 storage.set_size(storage.size() - n);
@@ -337,28 +315,32 @@ struct storage_traits
                 return storage.size();
         }
 
-        //
-        template <bool E = max_size_exists, std::enable_if_t<E, int> = 0>
+        template <bool E = meta::max_size_exists, std::enable_if_t<E, int> = 0>
         static constexpr size_type max_size(const storage_type& storage) noexcept
         {
                 return storage.max_size();
         }
 
-        template <bool E = max_size_exists, std::enable_if_t<!E, int> = 0>
+        template <bool E = meta::max_size_exists, std::enable_if_t<!E, int> = 0>
         static constexpr size_type max_size(const storage_type&) noexcept
         {
                 return static_cast<size_type>(max_ptrdiff / sizeof(value_type));
         }
 
+        static constexpr size_type capacity(const storage_type& storage) noexcept
+        {
+                return storage.capacity();
+        }
+
         // swap:
-        template <bool E = swap_exists, std::enable_if_t<E, int> = 0>
+        template <bool E = meta::swap_exists, std::enable_if_t<E, int> = 0>
         static constexpr void swap(storage_type& lhs,
                                    storage_type& rhs) noexcept(noexcept(lhs.swap(rhs)))
         {
                 lhs.swap(rhs);
         }
 
-        template <bool E = swap_exists, std::enable_if_t<!E, int> = 0>
+        template <bool E = meta::swap_exists, std::enable_if_t<!E, int> = 0>
         static constexpr void swap(storage_type& lhs,
                                    storage_type& rhs) noexcept(noexcept(std::swap(lhs, rhs)))
         {
