@@ -61,12 +61,12 @@ struct input_iterator_adaptor
         }
 
         //
-        constexpr bool operator==(const input_iterator_adaptor& other)
+        constexpr bool operator==(const input_iterator_adaptor& other) const
         {
                 return base_ == other.base_;
         }
 
-        constexpr bool operator!=(const input_iterator_adaptor& other)
+        constexpr bool operator!=(const input_iterator_adaptor& other) const
         {
                 return !(*this == other);
         }

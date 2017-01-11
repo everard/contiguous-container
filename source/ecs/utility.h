@@ -85,12 +85,12 @@ struct identity_iterator
         }
 
         //
-        constexpr bool operator==(const identity_iterator& rhs)
+        constexpr bool operator==(const identity_iterator& rhs) const
         {
                 return base_ == rhs.base_;
         }
 
-        constexpr bool operator!=(const identity_iterator& rhs)
+        constexpr bool operator!=(const identity_iterator& rhs) const
         {
                 return !(*this == rhs);
         }
