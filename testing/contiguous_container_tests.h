@@ -124,31 +124,26 @@ struct tracker
         // construct/destroy:
         tracker()
         {
-                ++n_default_constructor_calls;
                 global_log.emplace_back(log_entry::op_type::default_construct, id, id);
         }
 
         tracker(int x_) : x{x_}
         {
-                ++n_non_default_constructor_calls;
                 global_log.emplace_back(log_entry::op_type::non_default_construct, id, id);
         }
 
         tracker(const tracker& other) : x{other.x}
         {
-                ++n_copy_constructor_calls;
                 global_log.emplace_back(log_entry::op_type::copy_construct, other.id, id);
         }
 
         tracker(tracker&& other) : x{other.x}
         {
-                ++n_move_constructor_calls;
                 global_log.emplace_back(log_entry::op_type::move_construct, other.id, id);
         }
 
         ~tracker()
         {
-                ++n_destructor_calls;
                 global_log.emplace_back(log_entry::op_type::destroy, id, id);
         }
 
@@ -157,9 +152,7 @@ struct tracker
         {
                 global_log.emplace_back(log_entry::op_type::copy, other.id, id);
 
-                ++n_copy_assignments;
                 x = other.x;
-
                 return *this;
         }
 
@@ -167,29 +160,16 @@ struct tracker
         {
                 global_log.emplace_back(log_entry::op_type::move, other.id, id);
 
-                ++n_move_assignments;
                 x = other.x;
-
                 return *this;
         }
 
-        // data member
+        // data members:
         int x{};
         identifier id{next_identifier++};
-
-        // static data members for construction/destruction tracking:
-        static count n_default_constructor_calls, n_non_default_constructor_calls;
-        static count n_copy_constructor_calls, n_move_constructor_calls;
-        static count n_copy_assignments, n_move_assignments;
-        static count n_destructor_calls;
 };
 
-count tracker::n_default_constructor_calls{}, tracker::n_non_default_constructor_calls{};
-count tracker::n_copy_constructor_calls{}, tracker::n_move_constructor_calls{};
-count tracker::n_copy_assignments{}, tracker::n_move_assignments{};
-count tracker::n_destructor_calls{};
-
-// simple Storage type, which tracks calls to construct/destroy
+// simple storage type, which tracks calls to construct/destroy
 template <typename T, std::size_t N>
 struct tracked_storage
 {
@@ -362,7 +342,7 @@ TEST_CASE("core container functionality", "[contiguous_container]")
                 REQUIRE(c.n_destroy_calls == 5);
         }
 
-        SECTION("push_back/pop_back/erase:")
+        SECTION("push_back, pop_back, erase:")
         {
                 // construct(ids): 0, 1
                 tracker x0, x1{7};
@@ -454,6 +434,203 @@ TEST_CASE("core container functionality", "[contiguous_container]")
                          log_entry{log_entry::op_type::destroy, 3, 3}}}));
 
                 REQUIRE(c.n_construct_calls == 6);
+                REQUIRE(c.n_destroy_calls == 5);
+        }
+
+        SECTION("emplace, insert single element:")
+        {
+                // construct(ids): 0, 1, 2, 3
+                c.emplace_back(1);
+                c.emplace_back(2);
+                c.emplace_back(3);
+                c.emplace_back(4);
+
+                // identifiers: 0, 1, 2, 3
+                REQUIRE(c.size() == 4);
+                REQUIRE(check_container(c, {{1, 2, 3, 4}}));
+
+                // construct(ids): 4, 5 move from 3
+                // move(ids): 2 -> 3, 1 -> 2, 0 -> 1, 4 -> 0
+                // destroy(ids): 4
+                auto p = c.emplace(c.begin(), 10);
+                REQUIRE(p->x == 10);
+
+                // identifiers: 0, 1, 2, 3, 5
+                REQUIRE(c.size() == 5);
+                REQUIRE(check_container(c, {{10, 1, 2, 3, 4}}));
+
+                // destroy(ids): 0, 1, 2, 3, 5
+                c.erase(c.begin(), c.end());
+                REQUIRE(c.size() == 0);
+                REQUIRE(c.empty());
+
+                // construct(ids): 6, 7
+                c.emplace_back(11);
+                c.emplace_back(12);
+
+                // identifiers: 6, 7
+                REQUIRE(c.size() == 2);
+                REQUIRE(check_container(c, {{11, 12}}));
+
+                // construct(ids): 8
+                tracker x0;
+
+                // construct(ids): 9 copy from 8, 10 move from 7
+                // move(ids): 6 -> 7, 9 -> 6
+                // destroy(ids): 9
+                c.insert(c.begin(), x0);
+
+                // identifiers: 6, 7, 10
+                REQUIRE(c.size() == 3);
+                REQUIRE(check_container(c, {{0, 11, 12}}));
+
+                // construct(ids): 11
+                tracker x1{17};
+
+                // construct(ids): 12 move from 11, 13 move from 10
+                // move(ids): 7 -> 10, 12 -> 7
+                // destroy(ids): 12
+                c.insert(c.begin() + 1, std::move(x1));
+
+                // identifiers: 6, 7, 10, 13
+                REQUIRE(c.size() == 4);
+                REQUIRE(check_container(c, {{0, 17, 11, 12}}));
+
+                // construct(ids): 14
+                c.emplace_back(29);
+
+                // identifiers: 6, 7, 10, 13, 14
+                REQUIRE(c.size() == 5);
+                REQUIRE(check_container(c, {{0, 17, 11, 12, 29}}));
+
+                // construct(ids): 15
+                // destroy(ids): 15
+                p = c.emplace(c.begin(), 33);
+                REQUIRE(p == c.end());
+
+                // identifiers: 6, 7, 10, 13, 14
+                REQUIRE(c.size() == 5);
+                REQUIRE(check_container(c, {{0, 17, 11, 12, 29}}));
+
+                //
+                REQUIRE(check_log(std::array<log_entry, 33>{
+                        {log_entry{log_entry::op_type::non_default_construct, 0, 0},
+                         log_entry{log_entry::op_type::non_default_construct, 1, 1},
+                         log_entry{log_entry::op_type::non_default_construct, 2, 2},
+                         log_entry{log_entry::op_type::non_default_construct, 3, 3},
+                         log_entry{log_entry::op_type::non_default_construct, 4, 4},
+                         log_entry{log_entry::op_type::move_construct, 3, 5},
+                         log_entry{log_entry::op_type::move, 2, 3},
+                         log_entry{log_entry::op_type::move, 1, 2},
+                         log_entry{log_entry::op_type::move, 0, 1},
+                         log_entry{log_entry::op_type::move, 4, 0},
+                         log_entry{log_entry::op_type::destroy, 4, 4},
+                         log_entry{log_entry::op_type::destroy, 0, 0},
+                         log_entry{log_entry::op_type::destroy, 1, 1},
+                         log_entry{log_entry::op_type::destroy, 2, 2},
+                         log_entry{log_entry::op_type::destroy, 3, 3},
+                         log_entry{log_entry::op_type::destroy, 5, 5},
+                         log_entry{log_entry::op_type::non_default_construct, 6, 6},
+                         log_entry{log_entry::op_type::non_default_construct, 7, 7},
+                         log_entry{log_entry::op_type::default_construct, 8, 8},
+                         log_entry{log_entry::op_type::copy_construct, 8, 9},
+                         log_entry{log_entry::op_type::move_construct, 7, 10},
+                         log_entry{log_entry::op_type::move, 6, 7},
+                         log_entry{log_entry::op_type::move, 9, 6},
+                         log_entry{log_entry::op_type::destroy, 9, 9},
+                         log_entry{log_entry::op_type::non_default_construct, 11, 11},
+                         log_entry{log_entry::op_type::move_construct, 11, 12},
+                         log_entry{log_entry::op_type::move_construct, 10, 13},
+                         log_entry{log_entry::op_type::move, 7, 10},
+                         log_entry{log_entry::op_type::move, 12, 7},
+                         log_entry{log_entry::op_type::destroy, 12, 12},
+                         log_entry{log_entry::op_type::non_default_construct, 14, 14},
+                         log_entry{log_entry::op_type::non_default_construct, 15, 15},
+                         log_entry{log_entry::op_type::destroy, 15, 15}}}));
+
+                REQUIRE(c.n_construct_calls == 10);
+                REQUIRE(c.n_destroy_calls == 5);
+        }
+
+        SECTION("insert multiple elements using forward iterators:")
+        {
+                // construct(ids): 0, 1, 2
+                c.emplace_back(1);
+                c.emplace_back(2);
+                c.emplace_back(3);
+
+                // identifiers: 0, 1, 2
+                REQUIRE(c.size() == 3);
+                REQUIRE(check_container(c, {{1, 2, 3}}));
+
+                // construct(ids): 3, 4 move from 2, 5
+                // move(ids): 5 -> 2
+                // destroy(ids): 5
+                int v[] = {11, 12};
+
+                auto p = c.insert(c.begin() + 2, std::begin(v), std::end(v));
+                REQUIRE(p->x == 11);
+
+                // identifiers: 0, 1, 2, 3, 4
+                REQUIRE(c.size() == 5);
+                REQUIRE(check_container(c, {{1, 2, 11, 12, 3}}));
+
+                // destroy(ids): 0, 1, 2, 3, 4
+                c.clear();
+
+                // construct(ids): 6, 7, 8
+                c.emplace_back(1);
+                c.emplace_back(2);
+                c.emplace_back(3);
+
+                // identifiers: 6, 7, 8
+                REQUIRE(c.size() == 3);
+                REQUIRE(check_container(c, {{1, 2, 3}}));
+
+                // construct(ids): 9 move from 7, 10 move from 8
+                // move(ids): 6 -> 8
+                // construct(ids): 11
+                // move(ids): 11 -> 6
+                // destroy(ids): 11
+                // construct(ids): 12
+                // move(ids): 12 -> 7
+                // destroy(ids): 12
+                p = c.insert(c.begin(), std::begin(v), std::end(v));
+                REQUIRE(p->x == 11);
+
+                // identifiers: 6, 7, 8, 9, 10
+                REQUIRE(c.size() == 5);
+                REQUIRE(check_container(c, {{11, 12, 1, 2, 3}}));
+
+                //
+                REQUIRE(check_log(std::array<log_entry, 25>{
+                        {log_entry{log_entry::op_type::non_default_construct, 0, 0},
+                         log_entry{log_entry::op_type::non_default_construct, 1, 1},
+                         log_entry{log_entry::op_type::non_default_construct, 2, 2},
+                         log_entry{log_entry::op_type::non_default_construct, 3, 3},
+                         log_entry{log_entry::op_type::move_construct, 2, 4},
+                         log_entry{log_entry::op_type::non_default_construct, 5, 5},
+                         log_entry{log_entry::op_type::move, 5, 2},
+                         log_entry{log_entry::op_type::destroy, 5, 5},
+                         log_entry{log_entry::op_type::destroy, 0, 0},
+                         log_entry{log_entry::op_type::destroy, 1, 1},
+                         log_entry{log_entry::op_type::destroy, 2, 2},
+                         log_entry{log_entry::op_type::destroy, 3, 3},
+                         log_entry{log_entry::op_type::destroy, 4, 4},
+                         log_entry{log_entry::op_type::non_default_construct, 6, 6},
+                         log_entry{log_entry::op_type::non_default_construct, 7, 7},
+                         log_entry{log_entry::op_type::non_default_construct, 8, 8},
+                         log_entry{log_entry::op_type::move_construct, 7, 9},
+                         log_entry{log_entry::op_type::move_construct, 8, 10},
+                         log_entry{log_entry::op_type::move, 6, 8},
+                         log_entry{log_entry::op_type::non_default_construct, 11, 11},
+                         log_entry{log_entry::op_type::move, 11, 6},
+                         log_entry{log_entry::op_type::destroy, 11, 11},
+                         log_entry{log_entry::op_type::non_default_construct, 12, 12},
+                         log_entry{log_entry::op_type::move, 12, 7},
+                         log_entry{log_entry::op_type::destroy, 12, 12}}}));
+
+                REQUIRE(c.n_construct_calls == 10);
                 REQUIRE(c.n_destroy_calls == 5);
         }
 }
