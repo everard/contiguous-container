@@ -1,11 +1,12 @@
-// Copyright Ildus Nezametdinov 2016.
+// Copyright Ildus Nezametdinov 2017.
 // Distributed under the Boost Software License, Version 1.0.
 //(See accompanying file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 //
-#ifndef CONTAINERS_H
-#define CONTAINERS_H
+#ifndef STORAGE_TYPES_H
+#define STORAGE_TYPES_H
 
-#include "contiguous_container.h"
+#include "storage_traits.h"
+#include <stdexcept>
 
 namespace ecs
 {
@@ -48,9 +49,8 @@ struct allocator_aware_storage : Storage
         using size_type = typename std::allocator_traits<allocator_type>::size_type;
         using difference_type = typename std::allocator_traits<allocator_type>::difference_type;
 
-        struct principal_tag
-        {
-        };
+        // friend declaration:
+        friend struct storage_traits<allocator_aware_storage>;
 
         // construct:
         allocator_aware_storage() noexcept(noexcept(allocator_type{})) : Storage{}
@@ -62,7 +62,7 @@ struct allocator_aware_storage : Storage
         }
 
         explicit allocator_aware_storage(size_type n, const allocator_type& a = allocator_type{})
-                : allocator_aware_storage{n, a, principal_tag{}}
+                : allocator_aware_storage{n, a, principal_tag_{}}
         {
                 for(; n > 0; --n)
                         detail::initialize_next(*this);
@@ -70,7 +70,7 @@ struct allocator_aware_storage : Storage
 
         allocator_aware_storage(size_type n, const value_type& x,
                                 const allocator_type& a = allocator_type{})
-                : allocator_aware_storage{n, a, principal_tag{}}
+                : allocator_aware_storage{n, a, principal_tag_{}}
         {
                 for(; n > 0; --n)
                         detail::initialize_next(*this, x);
@@ -103,7 +103,7 @@ struct allocator_aware_storage : Storage
 
         //
         allocator_aware_storage(const allocator_aware_storage& other, const allocator_type& a)
-                : allocator_aware_storage{traits_::size(other), a, principal_tag{}}
+                : allocator_aware_storage{traits_::size(other), a, principal_tag_{}}
         {
                 for(auto& x : other)
                         detail::initialize_next(*this, x);
@@ -153,8 +153,21 @@ protected:
                 this->destroy_elements();
         }
 
-private:
-        allocator_aware_storage(size_type n, const allocator_type& a, principal_tag) : Storage{n, a}
+private: //
+        // additional types:
+        struct principal_tag_
+        {
+        };
+
+        using traits_ = storage_traits<allocator_aware_storage>;
+        using alloc_traits_ = std::allocator_traits<allocator_type>;
+
+        // requirement on allocator type:
+        static_assert(std::is_same<value_type, typename alloc_traits_::value_type>::value);
+
+        // additional constructors:
+        allocator_aware_storage(size_type n, const allocator_type& a, principal_tag_)
+                : Storage{n, a}
         {
         }
 
@@ -176,20 +189,10 @@ private:
         allocator_aware_storage(ForwardIterator first, ForwardIterator last,
                                 const allocator_type& a, std::forward_iterator_tag)
                 : allocator_aware_storage{
-                          static_cast<size_type>(std::distance(first, last)), a, principal_tag{}}
+                          static_cast<size_type>(std::distance(first, last)), a, principal_tag_{}}
         {
                 for_each_iter(first, last, [this](auto i) { detail::initialize_next(*this, *i); });
         }
-
-        // additional types:
-        using traits_ = storage_traits<allocator_aware_storage>;
-        using alloc_traits_ = std::allocator_traits<allocator_type>;
-
-        // friend declaration:
-        friend struct storage_traits<allocator_aware_storage>;
-
-        // requirement on allocator type:
-        static_assert(std::is_same<value_type, typename alloc_traits_::value_type>::value);
 };
 
 template <typename T, typename Allocator>
@@ -199,51 +202,42 @@ struct vector_storage
         using value_type = T;
         using allocator_type = Allocator;
 
-        using traits = storage_traits<vector_storage>;
-        using allocator_traits = std::allocator_traits<allocator_type>;
-
-        using pointer = typename allocator_traits::pointer;
-        using const_pointer = typename allocator_traits::const_pointer;
-
-        using size_type = typename allocator_traits::size_type;
-        using difference_type = typename allocator_traits::difference_type;
-
-        // friend declarations:
+        // friend declaration:
         friend struct storage_traits<vector_storage>;
 
-        // deleted copy constructor and assignment operator:
+        // deleted copy constructor and copy assignment operator:
         vector_storage(const vector_storage&) = delete;
         vector_storage& operator=(const vector_storage&) = delete;
 
-        // swap:
-        void swap(vector_storage& other) noexcept(
-                allocator_traits::propagate_on_container_swap::value ||
-                allocator_traits::is_always_equal::value)
-        {
-                impl_.swap(other.impl_);
-                if(allocator_traits::propagate_on_container_swap::value)
-                        std::swap(get_allocator_ref(), other.get_allocator_ref());
-        }
+protected: //
+        // additional types:
+        using traits_ = storage_traits<vector_storage>;
+        using alloc_traits_ = std::allocator_traits<allocator_type>;
 
-protected:
-        struct impl : allocator_type
+        using pointer_ = typename alloc_traits_::pointer;
+        using const_pointer_ = typename alloc_traits_::const_pointer;
+
+        using size_type_ = typename alloc_traits_::size_type;
+        using difference_type_ = typename alloc_traits_::difference_type;
+
+        struct implementation_ : allocator_type
         {
-                impl() noexcept(noexcept(allocator_type{})) : allocator_type{}
+                implementation_() noexcept(noexcept(allocator_type{})) : allocator_type{}
                 {
                 }
 
-                impl(const allocator_type& a) noexcept : allocator_type{a}
+                implementation_(const allocator_type& a) noexcept : allocator_type{a}
                 {
                 }
 
-                impl(const impl&) = delete;
-                impl(impl&&) = default;
+                implementation_(const implementation_&) = delete;
+                implementation_(implementation_&&) = default;
 
-                impl& operator=(const impl&) = delete;
-                impl& operator=(impl&&) = default;
+                implementation_& operator=(const implementation_&) = delete;
+                implementation_& operator=(implementation_&&) = default;
 
                 //
-                void swap(impl& other) noexcept
+                void swap(implementation_& other) noexcept
                 {
                         std::swap(beg_, other.beg_);
                         std::swap(end_, other.end_);
@@ -251,11 +245,11 @@ protected:
                 }
 
                 //
-                pointer beg_{}, end_{}, cap_{};
+                pointer_ beg_{}, end_{}, cap_{};
         };
 
         // construct/destroy:
-        vector_storage() noexcept(noexcept(impl{})) : impl_{}
+        vector_storage() noexcept(noexcept(implementation_{})) : impl_{}
         {
         }
 
@@ -263,29 +257,29 @@ protected:
         {
         }
 
-        vector_storage(size_type n, const allocator_type& a) : impl_{a}
+        vector_storage(size_type_ n, const allocator_type& a) : impl_{a}
         {
-                impl_.beg_ = impl_.end_ = impl_.cap_ = allocator_traits::allocate(impl_, n);
-                impl_.cap_ += static_cast<difference_type>(n);
+                impl_.beg_ = impl_.end_ = impl_.cap_ = alloc_traits_::allocate(impl_, n);
+                impl_.cap_ += static_cast<difference_type_>(n);
         }
 
         ~vector_storage()
         {
                 if(impl_.beg_)
-                        allocator_traits::deallocate(impl_, impl_.beg_, capacity());
+                        alloc_traits_::deallocate(impl_, impl_.beg_, capacity());
         }
 
         // move construct:
         vector_storage(vector_storage&& other) noexcept : impl_{std::move(other.impl_)}
         {
-                other.impl_.beg_ = other.impl_.end_ = other.impl_.cap_ = pointer{};
+                other.impl_.beg_ = other.impl_.end_ = other.impl_.cap_ = pointer_{};
         }
 
         vector_storage(vector_storage&& other,
-                       const allocator_type& a) noexcept(allocator_traits::is_always_equal::value)
+                       const allocator_type& a) noexcept(alloc_traits_::is_always_equal::value)
                 : impl_{a}
         {
-                if(allocator_traits::is_always_equal::value ||
+                if(alloc_traits_::is_always_equal::value ||
                    get_allocator_ref() == other.get_allocator_ref())
                 {
                         impl_.swap(other.impl_);
@@ -295,9 +289,8 @@ protected:
                 if(other.empty())
                         return;
 
-                impl_.beg_ = impl_.end_ = impl_.cap_ =
-                        allocator_traits::allocate(impl_, other.size());
-                impl_.cap_ += static_cast<difference_type>(other.size());
+                impl_.beg_ = impl_.end_ = impl_.cap_ = alloc_traits_::allocate(impl_, other.size());
+                impl_.cap_ += static_cast<difference_type_>(other.size());
 
                 try
                 {
@@ -313,11 +306,11 @@ protected:
 
         // move assign:
         vector_storage& operator=(vector_storage&& other) noexcept(
-                allocator_traits::propagate_on_container_move_assignment::value ||
-                allocator_traits::is_always_equal::value)
+                alloc_traits_::propagate_on_container_move_assignment::value ||
+                alloc_traits_::is_always_equal::value)
         {
-                if(allocator_traits::propagate_on_container_move_assignment::value ||
-                   allocator_traits::is_always_equal::value ||
+                if(alloc_traits_::propagate_on_container_move_assignment::value ||
+                   alloc_traits_::is_always_equal::value ||
                    get_allocator_ref() == other.get_allocator_ref())
                 {
                         destroy_elements();
@@ -326,7 +319,7 @@ protected:
                         impl_.swap(other.impl_);
 
                         if /*constexpr*/ (
-                                allocator_traits::propagate_on_container_move_assignment::value)
+                                alloc_traits_::propagate_on_container_move_assignment::value)
                                 get_allocator_ref() = std::move(other.get_allocator_ref());
 
                         return *this;
@@ -359,50 +352,50 @@ protected:
 
         void deallocate() noexcept
         {
-                allocator_traits::deallocate(impl_, impl_.beg_, capacity());
-                impl_.beg_ = impl_.end_ = impl_.cap_ = pointer{};
+                alloc_traits_::deallocate(impl_, impl_.beg_, capacity());
+                impl_.beg_ = impl_.end_ = impl_.cap_ = pointer_{};
         }
 
         //
         template <typename... Args>
-        void construct(pointer location, Args&&... args)
+        void construct(pointer_ location, Args&&... args)
         {
-                allocator_traits::construct(
-                        impl_, traits::ptr_cast(location), std::forward<Args>(args)...);
+                alloc_traits_::construct(
+                        impl_, traits_::ptr_cast(location), std::forward<Args>(args)...);
         }
 
-        void destroy(pointer location) noexcept
+        void destroy(pointer_ location) noexcept
         {
-                allocator_traits::destroy(impl_, traits::ptr_cast(location));
+                alloc_traits_::destroy(impl_, traits_::ptr_cast(location));
         }
 
         //
-        pointer begin() noexcept
+        pointer_ begin() noexcept
         {
                 return impl_.beg_;
         }
 
-        const_pointer begin() const noexcept
+        const_pointer_ begin() const noexcept
         {
                 return impl_.beg_;
         }
 
         //
-        pointer end() noexcept
+        pointer_ end() noexcept
         {
                 return impl_.end_;
         }
 
-        const_pointer end() const noexcept
+        const_pointer_ end() const noexcept
         {
                 return impl_.end_;
         }
 
         //
-        bool reallocate(size_type n)
+        bool reallocate(size_type_ n)
         {
                 auto first = begin();
-                reallocate_initialize_n(n, impl_.end_ - impl_.beg_, [this, &first](auto i) {
+                reallocate_initialize_n_(n, impl_.end_ - impl_.beg_, [this, &first](auto i) {
                         this->construct(i, std::move_if_noexcept(*first)), (void)++first;
                 });
 
@@ -410,11 +403,11 @@ protected:
         }
 
         template <typename ForwardIterator>
-        bool reallocate_assign(size_type n, ForwardIterator first)
+        bool reallocate_assign(size_type_ n, ForwardIterator first)
         {
-                reallocate_initialize_n(n, static_cast<difference_type>(n), [this, &first](auto i) {
-                        this->construct(i, *first), (void)++first;
-                });
+                reallocate_initialize_n_(
+                        n, static_cast<difference_type_>(n),
+                        [this, &first](auto i) { this->construct(i, *first), (void)++first; });
 
                 return true;
         }
@@ -431,40 +424,50 @@ protected:
         }
 
         //
-        void set_size(size_type n) noexcept
+        void set_size(size_type_ n) noexcept
         {
-                impl_.end_ = impl_.beg_ + static_cast<difference_type>(n);
+                impl_.end_ = impl_.beg_ + static_cast<difference_type_>(n);
         }
 
-        void inc_size(size_type n) noexcept
+        void inc_size(size_type_ n) noexcept
         {
-                impl_.end_ += static_cast<difference_type>(n);
+                impl_.end_ += static_cast<difference_type_>(n);
         }
 
-        void dec_size(size_type n) noexcept
+        void dec_size(size_type_ n) noexcept
         {
-                impl_.end_ -= static_cast<difference_type>(n);
+                impl_.end_ -= static_cast<difference_type_>(n);
         }
 
         //
-        size_type size() const noexcept
+        size_type_ size() const noexcept
         {
-                return static_cast<size_type>(impl_.end_ - impl_.beg_);
+                return static_cast<size_type_>(impl_.end_ - impl_.beg_);
         }
 
-        size_type max_size() const noexcept
+        size_type_ max_size() const noexcept
         {
-                return allocator_traits::max_size(impl_);
+                return alloc_traits_::max_size(impl_);
         }
 
-        size_type capacity() const noexcept
+        size_type_ capacity() const noexcept
         {
-                return static_cast<size_type>(impl_.cap_ - impl_.beg_);
+                return static_cast<size_type_>(impl_.cap_ - impl_.beg_);
+        }
+
+        //
+        void swap(vector_storage& other) noexcept(
+                alloc_traits_::propagate_on_container_swap::value ||
+                alloc_traits_::is_always_equal::value)
+        {
+                impl_.swap(other.impl_);
+                if(alloc_traits_::propagate_on_container_swap::value)
+                        std::swap(get_allocator_ref(), other.get_allocator_ref());
         }
 
 private:
         template <typename Initializer>
-        void reallocate_initialize_n(size_type sz, difference_type n, Initializer init)
+        void reallocate_initialize_n_(size_type_ sz, difference_type_ n, Initializer init)
         {
                 if(sz > max_size() || sz < capacity())
                         throw std::length_error("");
@@ -475,7 +478,7 @@ private:
                                        ? max_size()
                                        : new_capacity;
 
-                auto ptr = allocator_traits::allocate(impl_, new_capacity);
+                auto ptr = alloc_traits_::allocate(impl_, new_capacity);
                 auto first = ptr, last = first + n;
 
                 try
@@ -486,7 +489,7 @@ private:
                 catch(...)
                 {
                         for_each_iter(ptr, first, [this](auto i) { this->destroy(i); });
-                        allocator_traits::deallocate(impl_, ptr, new_capacity);
+                        alloc_traits_::deallocate(impl_, ptr, new_capacity);
 
                         throw;
                 }
@@ -496,18 +499,14 @@ private:
 
                 impl_.beg_ = ptr;
                 impl_.end_ = ptr + n;
-                impl_.cap_ = ptr + static_cast<difference_type>(new_capacity);
+                impl_.cap_ = ptr + static_cast<difference_type_>(new_capacity);
         }
 
         //
-        impl impl_;
+        implementation_ impl_;
 };
-
-// containers:
-template <typename T, typename Allocator = std::allocator<T>>
-using vector = contiguous_container<allocator_aware_storage<vector_storage<T, Allocator>>>;
 
 //
 } // namespace ecs
 
-#endif // CONTAINERS_H
+#endif // STORAGE_TYPES_H

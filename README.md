@@ -1,7 +1,7 @@
 This repository contains implementation of the R1D4 version of [contiguous_container](https://everard.github.io/contiguous_container).
 [Catch](https://github.com/philsquared/Catch/) is used for unit testing.
 
-Header containers.h (WIP) implements some common container types using contiguous_container:
+Header storage_types.h (WIP) implements some common storage types, which are used in definition of common container types in contiguous_container.h header file:
  - vector - normal vector, almost the same as std::vector.
 
 TODO:

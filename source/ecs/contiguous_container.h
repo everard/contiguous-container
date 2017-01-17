@@ -1,17 +1,15 @@
-// Copyright Ildus Nezametdinov 2016.
+// Copyright Ildus Nezametdinov 2017.
 // Distributed under the Boost Software License, Version 1.0.
 //(See accompanying file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 //
 #ifndef CONTIGUOUS_CONTAINER_H
 #define CONTIGUOUS_CONTAINER_H
 
-#include "storage_traits.h"
-
 #include <initializer_list>
 #include <functional>
-
-#include <stdexcept>
 #include <cassert>
+
+#include "storage_types.h"
 
 namespace ecs
 {
@@ -545,6 +543,10 @@ constexpr void swap(contiguous_container<Storage>& lhs,
 {
         lhs.swap(rhs);
 }
+
+// common container types:
+template <typename T, typename Allocator = std::allocator<T>>
+using vector = contiguous_container<allocator_aware_storage<vector_storage<T, Allocator>>>;
 
 //
 } // namespace ecs
