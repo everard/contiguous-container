@@ -33,8 +33,177 @@ Storage& assign_n(Storage& storage, Size n, ForwardIterator first)
         return storage;
 }
 
+template <typename Storage>
+void destroy_elements(Storage& storage) noexcept
+{
+        using traits = storage_traits<Storage>;
+        for_each_iter(traits::begin(storage), traits::end(storage),
+                      [&storage](auto i) { traits::destroy(storage, i); });
+}
+
 //
 } // namespace detail
+
+template <typename T, std::size_t N>
+struct inplace_storage
+{
+        // types:
+        using value_type = T;
+        using size_type = std::size_t;
+
+        // friend declaration:
+        friend struct storage_traits<inplace_storage>;
+
+        // construct:
+        inplace_storage() = default;
+
+        explicit inplace_storage(size_type n) : inplace_storage{}
+        {
+                for(n = std::min(n, capacity()); n > 0; --n)
+                        detail::initialize_next(*this);
+        }
+
+        inplace_storage(size_type n, const value_type& x) : inplace_storage{}
+        {
+                for(n = std::min(n, capacity()); n > 0; --n)
+                        detail::initialize_next(*this, x);
+        }
+
+        template <typename InputIterator, typename = check_input_iterator<InputIterator>>
+        inplace_storage(InputIterator first, InputIterator last)
+                : inplace_storage{
+                          first, last, std::iterator_traits<InputIterator>::iterator_category}
+        {
+        }
+
+        inplace_storage(std::initializer_list<value_type> il)
+                : inplace_storage{il.begin(), il.end(), std::forward_iterator_tag{}}
+        {
+        }
+
+        // copy/move construct:
+        inplace_storage(const inplace_storage& other) : inplace_storage{}
+        {
+                traits_::assign(*this, traits_::size(other), traits_::begin(other));
+        }
+
+        inplace_storage(inplace_storage&& other) : inplace_storage{}
+        {
+                traits_::assign(*this, traits_::size(other),
+                                std::make_move_iterator(traits_::begin(other)));
+
+                detail::destroy_elements(other);
+                traits_::set_size(other, 0);
+        }
+
+        // copy/move assign:
+        inplace_storage& operator=(const inplace_storage& other)
+        {
+                if(this == std::addressof(other))
+                        return *this;
+
+                traits_::assign(*this, traits_::size(other), traits_::begin(other));
+                return *this;
+        }
+
+        inplace_storage& operator=(inplace_storage&& other)
+        {
+                if(this == std::addressof(other))
+                        return *this;
+
+                traits_::assign(*this, traits_::size(other),
+                                std::make_move_iterator(traits_::begin(other)));
+
+                detail::destroy_elements(other);
+                traits_::set_size(other, 0);
+
+                return *this;
+        }
+
+        // swap:
+        void swap(inplace_storage& other)
+        {
+                auto& smaller = size() >= other.size() ? other : *this;
+                auto& larger = size() <= other.size() ? *this : other;
+
+                auto n = smaller.size();
+                std::swap_ranges(smaller.begin(), smaller.end(), larger.begin());
+
+                for_each_iter(larger.begin() + n, larger.end(), smaller.end(), [&smaller](auto i,
+                                                                                          auto j) {
+                        traits_::construct(smaller, j, std::move(*i)), traits_::inc_size(smaller);
+                });
+
+                for_each_iter(larger.begin() + n, larger.end(),
+                              [&larger](auto i) { traits_::destroy(larger, i); });
+                traits_::set_size(larger, n);
+        }
+
+protected:
+        ~inplace_storage()
+        {
+                if /*constexpr*/ (!std::is_trivially_destructible<value_type>::value)
+                        detail::destroy_elements(*this);
+        }
+
+private: //
+        // additional types:
+        using traits_ = storage_traits<inplace_storage>;
+
+        // additional constructors:
+        template <typename InputIterator>
+        inplace_storage(InputIterator first, InputIterator last, std::input_iterator_tag)
+                : inplace_storage{}
+        {
+                for(; first != last; ++first)
+                {
+                        if(traits_::full(*this))
+                                return;
+
+                        detail::initialize_next(*this, *first);
+                }
+        }
+
+        template <typename ForwardIterator>
+        inplace_storage(ForwardIterator first, ForwardIterator last, std::forward_iterator_tag)
+                : inplace_storage{}
+        {
+                auto n = static_cast<size_type>(std::distance(first, last));
+                for(n = std::min(n, capacity()); n > 0; --n, (void)++first)
+                        detail::initialize_next(*this, *first);
+        }
+
+        // interface:
+        value_type* begin() noexcept
+        {
+                return reinterpret_cast<value_type*>(data_);
+        }
+
+        const value_type* begin() const noexcept
+        {
+                return reinterpret_cast<const value_type*>(data_);
+        }
+
+        //
+        void set_size(size_type n) noexcept
+        {
+                size_ = n;
+        }
+
+        size_type size() const noexcept
+        {
+                return size_;
+        }
+
+        size_type capacity() const noexcept
+        {
+                return N;
+        }
+
+        //
+        alignas(T) unsigned char data_[N * sizeof(T)];
+        size_type size_{};
+};
 
 template <typename Storage>
 struct allocator_aware_storage : Storage
@@ -112,7 +281,7 @@ struct allocator_aware_storage : Storage
         allocator_aware_storage(allocator_aware_storage&& other, const allocator_type& a)
                 : Storage{std::move(other), a}
         {
-                other.destroy_elements();
+                detail::destroy_elements(other);
                 traits_::set_size(other, 0);
         }
 
@@ -129,7 +298,7 @@ struct allocator_aware_storage : Storage
                         if(!alloc_traits_::is_always_equal::value &&
                            this->get_allocator_ref() != other.get_allocator_ref())
                         {
-                                this->destroy_elements();
+                                detail::destroy_elements(*this);
                                 this->deallocate();
                         }
 
@@ -150,7 +319,7 @@ struct allocator_aware_storage : Storage
 protected:
         ~allocator_aware_storage()
         {
-                this->destroy_elements();
+                detail::destroy_elements(*this);
         }
 
 private: //
@@ -299,7 +468,7 @@ protected: //
                 }
                 catch(...)
                 {
-                        destroy_elements();
+                        detail::destroy_elements(*this);
                         throw;
                 }
         }
@@ -313,7 +482,7 @@ protected: //
                    alloc_traits_::is_always_equal::value ||
                    get_allocator_ref() == other.get_allocator_ref())
                 {
-                        destroy_elements();
+                        detail::destroy_elements(*this);
                         deallocate();
 
                         impl_.swap(other.impl_);
@@ -327,7 +496,7 @@ protected: //
 
                 detail::assign_n(*this, other.size(), std::make_move_iterator(other.begin()));
 
-                other.destroy_elements();
+                detail::destroy_elements(other);
                 other.deallocate();
 
                 return *this;
@@ -345,11 +514,6 @@ protected: //
         }
 
         //
-        void destroy_elements() noexcept
-        {
-                for_each_iter(begin(), end(), [this](auto i) { this->destroy(i); });
-        }
-
         void deallocate() noexcept
         {
                 alloc_traits_::deallocate(impl_, impl_.beg_, capacity());
@@ -494,7 +658,7 @@ private:
                         throw;
                 }
 
-                destroy_elements();
+                detail::destroy_elements(*this);
                 deallocate();
 
                 impl_.beg_ = ptr;

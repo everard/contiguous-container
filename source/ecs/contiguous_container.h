@@ -545,6 +545,9 @@ constexpr void swap(contiguous_container<Storage>& lhs,
 }
 
 // common container types:
+template <typename T, std::size_t N>
+using inplace_vector = contiguous_container<inplace_storage<T, N>>;
+
 template <typename T, typename Allocator = std::allocator<T>>
 using vector = contiguous_container<allocator_aware_storage<vector_storage<T, Allocator>>>;
 
