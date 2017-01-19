@@ -552,6 +552,61 @@ TEST_CASE("core container functionality", "[contiguous_container]")
                 REQUIRE(c.n_destroy_calls == 5);
         }
 
+        SECTION("insert multiple elements using input iterators:")
+        {
+                // construct(ids): 0, 1, 2
+                c.emplace_back(1);
+                c.emplace_back(2);
+                c.emplace_back(3);
+
+                // identifiers: 0, 1, 2
+                REQUIRE(c.size() == 3);
+                REQUIRE(check_container(c, {{1, 2, 3}}));
+
+                // construct(ids): 3, 4 move from 2
+                // move(ids): 1 -> 2, 3 -> 1
+                // destroy(ids): 3
+                // construct(ids): 5, 6 move from 4
+                // move(ids): 2 -> 4, 5 -> 2
+                // destroy(ids): 5
+                int v[] = {11, 12};
+
+                auto p = c.insert(c.begin() + 1, make_input_iterator(std::begin(v)),
+                                  make_input_iterator(std::end(v)));
+                REQUIRE(p->x == 11);
+
+                // identifiers: 0, 1, 2, 4, 6
+                REQUIRE(c.size() == 5);
+                REQUIRE(check_container(c, {{1, 11, 12, 2, 3}}));
+
+                // destroy(ids): 0, 1, 2, 4, 6
+                c.clear();
+
+                //
+                REQUIRE(check_log(std::array<log_entry, 18>{
+                        {log_entry{log_entry::op_type::non_default_construct, 0, 0},
+                         log_entry{log_entry::op_type::non_default_construct, 1, 1},
+                         log_entry{log_entry::op_type::non_default_construct, 2, 2},
+                         log_entry{log_entry::op_type::non_default_construct, 3, 3},
+                         log_entry{log_entry::op_type::move_construct, 2, 4},
+                         log_entry{log_entry::op_type::move, 1, 2},
+                         log_entry{log_entry::op_type::move, 3, 1},
+                         log_entry{log_entry::op_type::destroy, 3, 3},
+                         log_entry{log_entry::op_type::non_default_construct, 5, 5},
+                         log_entry{log_entry::op_type::move_construct, 4, 6},
+                         log_entry{log_entry::op_type::move, 2, 4},
+                         log_entry{log_entry::op_type::move, 5, 2},
+                         log_entry{log_entry::op_type::destroy, 5, 5},
+                         log_entry{log_entry::op_type::destroy, 0, 0},
+                         log_entry{log_entry::op_type::destroy, 1, 1},
+                         log_entry{log_entry::op_type::destroy, 2, 2},
+                         log_entry{log_entry::op_type::destroy, 4, 4},
+                         log_entry{log_entry::op_type::destroy, 6, 6}}}));
+
+                REQUIRE(c.n_construct_calls == 5);
+                REQUIRE(c.n_destroy_calls == 5);
+        }
+
         SECTION("insert multiple elements using forward iterators:")
         {
                 // construct(ids): 0, 1, 2
