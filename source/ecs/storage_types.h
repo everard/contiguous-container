@@ -48,8 +48,8 @@ template <typename T, std::size_t N>
 struct inplace_storage
 {
         // types:
+        using traits = storage_traits<inplace_storage>;
         using value_type = T;
-        using size_type = std::size_t;
 
         // friend declaration:
         friend struct storage_traits<inplace_storage>;
@@ -57,43 +57,43 @@ struct inplace_storage
         // construct:
         inplace_storage() = default;
 
-        explicit inplace_storage(size_type n) : inplace_storage{}
+        explicit inplace_storage(std::size_t n) : inplace_storage{}
         {
                 for(n = std::min(n, capacity()); n > 0; --n)
                         detail::initialize_next(*this);
         }
 
-        inplace_storage(size_type n, const value_type& x) : inplace_storage{}
+        inplace_storage(std::size_t n, const value_type& x) : inplace_storage{}
         {
                 for(n = std::min(n, capacity()); n > 0; --n)
                         detail::initialize_next(*this, x);
         }
 
         template <typename InputIterator, typename = check_input_iterator<InputIterator>>
-        inplace_storage(InputIterator first, InputIterator last)
-                : inplace_storage{
-                          first, last, std::iterator_traits<InputIterator>::iterator_category}
+        inplace_storage(InputIterator first, InputIterator last) : inplace_storage{}
         {
+                for(; first != last && !traits::full(*this); ++first)
+                        detail::initialize_next(*this, *first);
         }
 
         inplace_storage(std::initializer_list<value_type> il)
-                : inplace_storage{il.begin(), il.end(), std::forward_iterator_tag{}}
+                : inplace_storage{il.begin(), il.end()}
         {
         }
 
         // copy/move construct:
         inplace_storage(const inplace_storage& other) : inplace_storage{}
         {
-                traits_::assign(*this, traits_::size(other), traits_::begin(other));
+                traits::assign(*this, traits::size(other), traits::begin(other));
         }
 
         inplace_storage(inplace_storage&& other) : inplace_storage{}
         {
-                traits_::assign(*this, traits_::size(other),
-                                std::make_move_iterator(traits_::begin(other)));
+                traits::assign(
+                        *this, traits::size(other), std::make_move_iterator(traits::begin(other)));
 
                 detail::destroy_elements(other);
-                traits_::set_size(other, 0);
+                traits::set_size(other, 0);
         }
 
         // copy/move assign:
@@ -102,7 +102,7 @@ struct inplace_storage
                 if(this == std::addressof(other))
                         return *this;
 
-                traits_::assign(*this, traits_::size(other), traits_::begin(other));
+                traits::assign(*this, traits::size(other), traits::begin(other));
                 return *this;
         }
 
@@ -111,11 +111,11 @@ struct inplace_storage
                 if(this == std::addressof(other))
                         return *this;
 
-                traits_::assign(*this, traits_::size(other),
-                                std::make_move_iterator(traits_::begin(other)));
+                traits::assign(
+                        *this, traits::size(other), std::make_move_iterator(traits::begin(other)));
 
                 detail::destroy_elements(other);
-                traits_::set_size(other, 0);
+                traits::set_size(other, 0);
 
                 return *this;
         }
@@ -123,20 +123,18 @@ struct inplace_storage
         // swap:
         void swap(inplace_storage& other)
         {
-                auto& smaller = size() >= other.size() ? other : *this;
-                auto& larger = size() <= other.size() ? *this : other;
+                auto& x = size() >= other.size() ? other : *this;
+                auto& y = size() >= other.size() ? *this : other;
 
-                auto n = smaller.size();
-                std::swap_ranges(smaller.begin(), smaller.end(), larger.begin());
+                auto n = x.size();
+                auto f = y.begin() + n, l = y.end();
 
-                for_each_iter(larger.begin() + n, larger.end(), smaller.end(), [&smaller](auto i,
-                                                                                          auto j) {
-                        traits_::construct(smaller, j, std::move(*i)), traits_::inc_size(smaller);
-                });
+                std::swap_ranges(x.begin(), x.end(), y.begin());
 
-                for_each_iter(larger.begin() + n, larger.end(),
-                              [&larger](auto i) { traits_::destroy(larger, i); });
-                traits_::set_size(larger, n);
+                for_each_iter(f, l, [&x](auto i) { detail::initialize_next(x, std::move(*i)); });
+                for_each_iter(f, l, [&y](auto i) { traits::destroy(y, i); });
+
+                traits::set_size(y, n);
         }
 
 protected:
@@ -146,34 +144,7 @@ protected:
                         detail::destroy_elements(*this);
         }
 
-private: //
-        // additional types:
-        using traits_ = storage_traits<inplace_storage>;
-
-        // additional constructors:
-        template <typename InputIterator>
-        inplace_storage(InputIterator first, InputIterator last, std::input_iterator_tag)
-                : inplace_storage{}
-        {
-                for(; first != last; ++first)
-                {
-                        if(traits_::full(*this))
-                                return;
-
-                        detail::initialize_next(*this, *first);
-                }
-        }
-
-        template <typename ForwardIterator>
-        inplace_storage(ForwardIterator first, ForwardIterator last, std::forward_iterator_tag)
-                : inplace_storage{}
-        {
-                auto n = static_cast<size_type>(std::distance(first, last));
-                for(n = std::min(n, capacity()); n > 0; --n, (void)++first)
-                        detail::initialize_next(*this, *first);
-        }
-
-        // interface:
+private:
         value_type* begin() noexcept
         {
                 return reinterpret_cast<value_type*>(data_);
@@ -184,25 +155,24 @@ private: //
                 return reinterpret_cast<const value_type*>(data_);
         }
 
-        //
-        void set_size(size_type n) noexcept
+        void set_size(std::size_t n) noexcept
         {
                 size_ = n;
         }
 
-        size_type size() const noexcept
+        std::size_t size() const noexcept
         {
                 return size_;
         }
 
-        size_type capacity() const noexcept
+        std::size_t capacity() const noexcept
         {
                 return N;
         }
 
-        //
-        alignas(T) unsigned char data_[N * sizeof(T)];
-        size_type size_{};
+private:
+        alignas(value_type) unsigned char data_[N * sizeof(value_type)];
+        std::size_t size_{};
 };
 
 template <typename Storage>
@@ -463,7 +433,7 @@ protected: //
 
                 try
                 {
-                        for(auto i : other)
+                        for(auto& i : other)
                                 detail::initialize_next(*this, std::move(*i));
                 }
                 catch(...)
