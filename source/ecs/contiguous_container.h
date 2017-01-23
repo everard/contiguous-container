@@ -5,11 +5,11 @@
 #ifndef CONTIGUOUS_CONTAINER_H
 #define CONTIGUOUS_CONTAINER_H
 
+#include "common_storage_types.h"
+
 #include <initializer_list>
 #include <functional>
 #include <cassert>
-
-#include "storage_types.h"
 
 namespace ecs
 {

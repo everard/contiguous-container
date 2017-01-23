@@ -2,8 +2,8 @@
 // Distributed under the Boost Software License, Version 1.0.
 //(See accompanying file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 //
-#ifndef STORAGE_TYPES_H
-#define STORAGE_TYPES_H
+#ifndef COMMON_STORAGE_TYPES_H
+#define COMMON_STORAGE_TYPES_H
 
 #include "storage_traits.h"
 #include <stdexcept>
@@ -643,4 +643,4 @@ private:
 //
 } // namespace ecs
 
-#endif // STORAGE_TYPES_H
+#endif // COMMON_STORAGE_TYPES_H
